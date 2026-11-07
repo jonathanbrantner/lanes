@@ -2,6 +2,8 @@
 
 ## 0.4.0 (unreleased)
 
+- Core details (Settings, off by default): expand the CPU box to see every core's load grouped by core class with a temperature per class, and the GPU box for Renderer/Tiler load and the GPU's temperature sensors. Per-cluster temperatures are checked on the M6 only.
+- `powermon --cluster-probe` finds which temperature sensors belong to which core class by loading one class at a time.
 - **Temperatures are now available.** CPU, GPU, SSD (and memory where the chip has a sensor) in each panel section with a small graph, plus an "Avg temp & fan" item. Definitions of the memory terms added to Settings.
 - Optional Temperature item: CPU, GPU and SSD temperature plus fan speed, read without admin rights. Hidden when a Mac does not expose the sensors.
 - Temperature unit (°C or °F) and chip picker in Settings (Automatic, M1 to M6, or Other / newer).

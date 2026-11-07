@@ -21,7 +21,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "powermon",
-            dependencies: ["CPower"]
+            dependencies: ["CPower", "SystemMonitorCore"]
         ),
         .target(
             name: "SystemMonitorCore",

@@ -94,9 +94,11 @@ struct PanelView: View {
         case .drives: drivesSection
         case .disk: diskSection
         case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory,
-                                  temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory)
+                                  temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory,
+                                  expanded: settings.coreDetails ? $settings.cpuExpanded : nil) { cpuCoresView }
         case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
-                                  temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory)
+                                  temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory,
+                                  expanded: settings.coreDetails ? $settings.gpuExpanded : nil) { gpuDetailView }
         case .power: powerSection
         case .thermal: thermalSection
         }
@@ -241,28 +243,111 @@ struct PanelView: View {
 
     // MARK: CPU / GPU
 
-    private func percentSection(_ item: MonitorItem, value: Double?, history: [Double],
-                                temp: String?, tempHistory: [Double]) -> some View {
+    private func percentSection<Detail: View>(_ item: MonitorItem, value: Double?, history: [Double],
+                                              temp: String?, tempHistory: [Double],
+                                              expanded: Binding<Bool>? = nil,
+                                              @ViewBuilder detail: () -> Detail) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 header(item)
+                if let expanded {
+                    Button { withAnimation(.easeInOut(duration: 0.15)) { expanded.wrappedValue.toggle() } } label: {
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                            .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
+                            .foregroundStyle(.secondary).frame(width: 18, height: 18).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(expanded.wrappedValue ? "Hide cores" : "Show cores")
+                }
                 Spacer()
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a").monospacedDigit()
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
-            tempChart(tempHistory, .red, label: temp)
+            tempChart(tempHistory, .red, label: temp, labelColor: item == .cpu ? .red : .secondary)
+            if let expanded, expanded.wrappedValue { detail() }
+        }
+    }
+
+    // MARK: Cores
+
+    /// Every logical core's load, grouped by core class, with one temperature per class.
+    private var cpuCoresView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if monitor.coreUsage.isEmpty {
+                Text("Waiting for data").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(monitor.topology.clusters, id: \.name) { cluster in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text("\(cluster.name) · \(cluster.cpus.count) cores").font(.caption.weight(.semibold))
+                        Spacer()
+                        if settings.showTemperatures, let c = monitor.thermal?.clusterC[cluster.kind] {
+                            Text(settings.temperature(c)).font(.caption).monospacedDigit().foregroundStyle(.red)
+                        }
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                              spacing: 3) {
+                        ForEach(cluster.cpus, id: \.self) { cpu in
+                            coreBar(cpu, load: cpu < monitor.coreUsage.count ? monitor.coreUsage[cpu] : nil,
+                                    color: MonitorItem.cpu.color)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func coreBar(_ index: Int, load: Double?, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text("\(index)").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                .frame(width: 14, alignment: .trailing)
+            LoadBar(value: load, color: color)
+        }
+    }
+
+    /// macOS reports no per-GPU-core numbers without admin rights, so this shows the three loads it
+    /// does report plus the GPU's individual temperature sensors (sensors, not cores).
+    private var gpuDetailView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let d = monitor.gpuDetail {
+                labeledBar("Device", d.device)
+                labeledBar("Renderer", d.renderer)
+                labeledBar("Tiler", d.tiler)
+            } else {
+                Text("Waiting for data").font(.caption).foregroundStyle(.secondary)
+            }
+            if settings.showTemperatures, let sensors = monitor.thermal?.gpuSensorsC, !sensors.isEmpty {
+                Text("GPU sensors").font(.caption.weight(.semibold)).padding(.top, 2)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 2) {
+                    ForEach(sensors.indices, id: \.self) { i in
+                        Text("S\(i + 1) \(settings.temperature(sensors[i], symbol: false))")
+                            .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func labeledBar(_ title: String, _ value: Double) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(.secondary).frame(width: 56, alignment: .leading)
+            LoadBar(value: value, color: MonitorItem.gpu.color)
         }
     }
 
     /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
     /// so small changes show up, and hides itself until there are a few readings.
     @ViewBuilder
-    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil) -> some View {
+    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil,
+                           labelColor: Color = .secondary) -> some View {
         let enabled = always || settings.showTemperatures
         if enabled, label != nil || history.count > 2 {
             HStack(spacing: 4) {
                 if let label {
-                    Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    Text(label).font(.caption).monospacedDigit().foregroundStyle(labelColor)
                         .frame(width: 42, alignment: .leading)
                 }
                 Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
@@ -314,6 +399,28 @@ struct PanelView: View {
 }
 
 // MARK: - Charts
+
+/// A thin 0...1 bar with its percentage, used for core and GPU loads.
+struct LoadBar: View {
+    let value: Double?
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 2).fill(color)
+                        .frame(width: geo.size.width * CGFloat(min(max(value ?? 0, 0), 1)))
+                }
+            }
+            .frame(height: 7)
+            Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "-")
+                .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .trailing)
+        }
+    }
+}
 
 /// Filled history chart for a 0...1 value over the last 60 seconds.
 struct HistoryChart: View {

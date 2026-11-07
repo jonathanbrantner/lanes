@@ -1,6 +1,20 @@
 import Foundation
 import IOKit
 
+/// Device, Renderer and Tiler load (0...1). macOS reports no per-GPU-core numbers without admin
+/// rights, so these three are all the detail there is.
+public struct GPUDetails: Equatable {
+    public let device: Double
+    public let renderer: Double
+    public let tiler: Double
+
+    public init(device: Double, renderer: Double, tiler: Double) {
+        self.device = device
+        self.renderer = renderer
+        self.tiler = tiler
+    }
+}
+
 /// GPU utilization (0...1) from IOKit's accelerator statistics. The accelerator entry is
 /// looked up once; each tick reads a single property from it.
 /// The key is undocumented and may change between macOS versions, so nil is normal and the
@@ -21,16 +35,35 @@ public final class GPUCollector {
 
     deinit { entries.forEach { IOObjectRelease($0) } }
 
+    private func performanceStats(_ entry: io_object_t) -> [String: Any]? {
+        IORegistryEntryCreateCFProperty(entry, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? [String: Any]
+    }
+
+    private static func fraction(_ stats: [String: Any], _ key: String) -> Double? {
+        (stats[key] as? NSNumber).map { min(1, max(0, $0.doubleValue / 100)) }
+    }
+
     public func utilization() -> Double? {
         var best: Double?
         for entry in entries {
-            guard let perf = IORegistryEntryCreateCFProperty(
-                    entry, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?
-                    .takeRetainedValue() as? [String: Any],
-                  let percent = (perf["Device Utilization %"] as? NSNumber)?.doubleValue
+            guard let stats = performanceStats(entry), let device = Self.fraction(stats, "Device Utilization %")
             else { continue }
-            best = max(best ?? 0, min(1, percent / 100))
+            best = max(best ?? 0, device)
         }
         return best
+    }
+
+    /// Reads the three loads in one registry read; use instead of `utilization()` when the detail
+    /// is shown, so the statistics are not fetched twice per tick.
+    public func details() -> GPUDetails? {
+        for entry in entries {
+            guard let stats = performanceStats(entry), let device = Self.fraction(stats, "Device Utilization %")
+            else { continue }
+            return GPUDetails(device: device,
+                              renderer: Self.fraction(stats, "Renderer Utilization %") ?? 0,
+                              tiler: Self.fraction(stats, "Tiler Utilization %") ?? 0)
+        }
+        return nil
     }
 }
