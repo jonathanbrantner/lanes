@@ -41,6 +41,14 @@ extension Monitor {
                                   color: .labelColor, widthSamples: ["PWR", "88.8 W"],
                                   labelColor: MonitorItem.power.nsColor))
         }
+        if on.contains(.thermal), let t = thermal, t.averageC != nil || !t.fans.isEmpty {
+            var parts: [String] = []
+            if let avg = t.averageC { parts.append(settings.temperature(avg, symbol: false)) }
+            if let fan = t.fans.first { parts.append(String(format: "%.0frpm", fan.rpm)) }
+            cells.append(IconCell(layout: .labeled(label: "TEMP", value: parts.joined(separator: " ")),
+                                  color: .labelColor, widthSamples: ["TEMP", "212° 9999rpm"],
+                                  labelColor: MonitorItem.thermal.nsColor))
+        }
         if on.contains(.cpu), let cpu {
             let temp = settings.showTemperatures ? thermal?.cpuC.map { " " + settings.temperature($0, symbol: false) } : nil
             cells.append(IconCell(layout: .labeled(label: "CPU", value: String(format: "%.0f%%", cpu * 100) + (temp ?? "")),

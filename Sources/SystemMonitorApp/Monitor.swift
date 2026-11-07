@@ -22,6 +22,8 @@ struct MonitorState {
     var cpuTempHistory: [Double] = []   // °C, one point per thermal read (about every 3 s)
     var gpuTempHistory: [Double] = []
     var ramTempHistory: [Double] = []
+    var ssdTempHistory: [Double] = []
+    var avgTempHistory: [Double] = []
     var driveHistory: [String: [DriveSample]] = [:]
 }
 
@@ -81,6 +83,8 @@ final class Monitor: ObservableObject {
     var cpuTempHistory: [Double] { state.cpuTempHistory }
     var gpuTempHistory: [Double] { state.gpuTempHistory }
     var ramTempHistory: [Double] { state.ramTempHistory }
+    var ssdTempHistory: [Double] { state.ssdTempHistory }
+    var avgTempHistory: [Double] { state.avgTempHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
 
     /// External drives that are connected and not switched off in settings.
@@ -202,11 +206,12 @@ private final class Sampler {
             if shown.contains(.gpu) { wanted.insert(.gpu) }
             if shown.contains(.memory) { wanted.insert(.ram) }
             if shown.contains(.disk) { wanted.insert(.ssd) }
-            if shown.contains(.power) { wanted.formUnion([.cpu, .gpu, .ram, .ssd, .fan]) }   // average temperature and fan
         }
+        if shown.contains(.thermal) { wanted.formUnion([.cpu, .gpu, .ram, .ssd, .fan]) }   // average + fan
         guard !wanted.isEmpty else {
             state.thermal = nil
             state.cpuTempHistory = []; state.gpuTempHistory = []; state.ramTempHistory = []
+            state.ssdTempHistory = []; state.avgTempHistory = []
             return
         }
         let every = max(1, Int((3.0 / interval).rounded(.up)))
@@ -216,6 +221,8 @@ private final class Sampler {
         push(&state.cpuTempHistory, state.thermal?.cpuC)
         push(&state.gpuTempHistory, state.thermal?.gpuC)
         push(&state.ramTempHistory, state.thermal?.ramC)
+        push(&state.ssdTempHistory, state.thermal?.ssdC)
+        push(&state.avgTempHistory, state.thermal?.averageC)
     }
 
     /// Number of ticks that make up Activity Monitor's default 5 second averaging window.

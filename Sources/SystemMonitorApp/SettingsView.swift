@@ -61,7 +61,7 @@ struct SettingsView: View {
             Divider()
             Divider()
             Toggle("Show temperatures", isOn: $settings.showTemperatures).toggleStyle(.switch)
-            if settings.showTemperatures {
+            if settings.showTemperatures || settings.menuBarItems.contains(.thermal) || settings.panelItems.contains(.thermal) {
                 HStack {
                     Text("Unit")
                     Spacer()
@@ -93,7 +93,34 @@ struct SettingsView: View {
             if let error = loginItem.error {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
+
+            Divider()
+            DisclosureGroup("Definitions") {
+                VStack(alignment: .leading, spacing: 8) {
+                    definition("App Memory", "Memory used by the apps you run and their helper processes.", .blue)
+                    definition("Wired", "Memory the system must keep in RAM (kernel, drivers). It can't be compressed or swapped out.", .orange)
+                    definition("Compressed", "Memory macOS squeezed to make room. It is unpacked when needed: slower than normal memory, faster than swap.", .purple)
+                    definition("Other", "Counted as used but not in the three above: purgeable, pre-loaded and kernel-reserved pages.", .gray)
+                    definition("Cached files", "File data kept in RAM for speed. Not counted as used; macOS frees it when apps need space.", nil)
+                    definition("Swap used", "Memory moved to the SSD because RAM is full. A lot of swap makes the Mac slower.", nil)
+                    definition("Pressure", "How hard macOS works to find free memory. \"Under pressure\" means heavy compressing or swapping.", nil)
+                    definition("CPU / GPU temp", "Average of that chip's sensors. Memory temperature only appears on chips that have a memory sensor.", .red)
+                    definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
+                    definition("Fan", "Current fan speed in revolutions per minute.", nil)
+                }
+                .padding(.top, 6)
+            }
         }
         .controlSize(.small)
+    }
+
+    private func definition(_ title: String, _ text: String, _ color: Color?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 5) {
+                Circle().fill(color ?? .clear).frame(width: 7, height: 7)
+                Text(title).fontWeight(.semibold)
+            }
+            Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

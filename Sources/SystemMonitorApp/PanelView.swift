@@ -81,6 +81,7 @@ struct PanelView: View {
             switch item {
             case .gpu: return monitor.gpu != nil
             case .power: return monitor.power != nil
+            case .thermal: return monitor.thermal?.averageC != nil || !(monitor.thermal?.fans.isEmpty ?? true)
             default: return true
             }
         }
@@ -97,6 +98,7 @@ struct PanelView: View {
         case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
                                   temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory)
         case .power: powerSection
+        case .thermal: thermalSection
         }
     }
 
@@ -122,18 +124,27 @@ struct PanelView: View {
                 }
             }
             .font(.caption)
-            // Average temperature and fan speed, shown together under Power.
-            let avg = shownTemp(monitor.thermal?.averageC)
-            let fan = settings.showTemperatures ? monitor.thermal?.fans.first : nil
-            if avg != nil || fan != nil {
-                HStack {
-                    Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(.red).frame(width: 12)
-                    if let avg { Text("Avg \(avg)").monospacedDigit() }
-                    Spacer()
-                    if let fan { Text("Fan \(String(format: "%.0f", fan.rpm)) RPM").monospacedDigit() }
-                }
-                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Average temperature and fan
+
+    private var thermalSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                header(.thermal)
+                Spacer()
+                if let avg = monitor.thermal?.averageC { Text(settings.temperature(avg)).monospacedDigit() }
             }
+            if let fan = monitor.thermal?.fans.first {
+                HStack {
+                    Text("Fan").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "%.0f RPM", fan.rpm)).monospacedDigit()
+                }
+                .font(.caption)
+            }
+            tempChart(monitor.avgTempHistory, .red, always: true)
         }
     }
 
@@ -212,6 +223,7 @@ struct PanelView: View {
             } else {
                 Text("Waiting for data").foregroundStyle(.secondary)
             }
+            tempChart(monitor.ssdTempHistory, .red)
         }
     }
 
@@ -248,8 +260,8 @@ struct PanelView: View {
     /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
     /// so small changes show up, and hides itself until there are a few readings.
     @ViewBuilder
-    private func tempChart(_ history: [Double], _ color: Color) -> some View {
-        if settings.showTemperatures, history.count > 2, let lo = history.min(), let hi = history.max() {
+    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false) -> some View {
+        if always || settings.showTemperatures, history.count > 2, let lo = history.min(), let hi = history.max() {
             let span = max(hi - lo, 10)
             HStack(spacing: 4) {
                 Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
