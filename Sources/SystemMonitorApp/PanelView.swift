@@ -263,7 +263,7 @@ struct PanelView: View {
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a").monospacedDigit()
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
-            tempChart(tempHistory, .red, label: temp)
+            tempChart(tempHistory, .red, label: temp, labelColor: item == .cpu ? .red : .secondary)
             if let expanded, expanded.wrappedValue { detail() }
         }
     }
@@ -282,7 +282,7 @@ struct PanelView: View {
                         Text("\(cluster.name) · \(cluster.cpus.count) cores").font(.caption.weight(.semibold))
                         Spacer()
                         if settings.showTemperatures, let c = monitor.thermal?.clusterC[cluster.kind] {
-                            Text(settings.temperature(c)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                            Text(settings.temperature(c)).font(.caption).monospacedDigit().foregroundStyle(.red)
                         }
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
@@ -360,12 +360,13 @@ struct PanelView: View {
     /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
     /// so small changes show up, and hides itself until there are a few readings.
     @ViewBuilder
-    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil) -> some View {
+    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil,
+                           labelColor: Color = .secondary) -> some View {
         let enabled = always || settings.showTemperatures
         if enabled, label != nil || history.count > 2 {
             HStack(spacing: 4) {
                 if let label {
-                    Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    Text(label).font(.caption).monospacedDigit().foregroundStyle(labelColor)
                         .frame(width: 42, alignment: .leading)
                 }
                 Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)

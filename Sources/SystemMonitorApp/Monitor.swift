@@ -126,6 +126,7 @@ private final class Sampler {
     private var cpuCores = false
     private var gpuDetail = false
     private var coreSamples: [[Double]] = []
+    private var lastWanted: ThermalWanted = []
     private let drives: DriveCollector
     private var timer: DispatchSourceTimer?
 
@@ -142,10 +143,18 @@ private final class Sampler {
     func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool,
                    cpuCores: Bool, gpuDetail: Bool) {
         queue.async {
+            let coresOpened = cpuCores && !self.cpuCores
+            let gpuOpened = gpuDetail && !self.gpuDetail
             self.shown = shown
             self.temperatures = temperatures
             self.cpuCores = cpuCores
             self.gpuDetail = gpuDetail
+            // Opening a detail view: take the baseline now and show real numbers after 1 s,
+            // instead of "Waiting for data" for a whole update interval.
+            if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
+            if coresOpened || gpuOpened {
+                self.queue.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refreshDetail() }
+            }
             if chip != self.chip { self.chip = chip; self.thermal = nil; self.state.thermal = nil }
             let restart = interval != self.interval || self.timer == nil
             self.interval = interval
@@ -213,6 +222,14 @@ private final class Sampler {
         onSample?(state)
     }
 
+    /// Light refresh used right after a detail view opens: cores, GPU detail and the thermal groups.
+    private func refreshDetail() {
+        sampleCores()
+        state.gpuDetail = (gpuDetail && shown.contains(.gpu)) ? gpu.details() : nil
+        sampleThermal()
+        onSample?(state)
+    }
+
     /// Per-core load, only while the CPU box is expanded; averaged over the same 5 s window as the
     /// overall CPU value. When closed, the baseline is dropped so reopening starts fresh.
     private func sampleCores() {
@@ -251,7 +268,10 @@ private final class Sampler {
             return
         }
         let every = max(1, Int((3.0 / interval).rounded(.up)))
-        guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
+        // Read at once when the set of groups changed (a detail view just opened).
+        let changed = wanted != lastWanted
+        lastWanted = wanted
+        guard changed || (tickCount - 1) % every == 0 || state.thermal == nil else { return }
         if thermal == nil { thermal = ThermalCollector(chip: chip) }
         state.thermal = thermal?.snapshot(wanted: wanted)
         push(&state.cpuTempHistory, state.thermal?.cpuC)
