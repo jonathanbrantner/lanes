@@ -56,6 +56,11 @@ public enum ChipFamily: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Short name for menus.
+    public var shortTitle: String {
+        self == .other ? "Newer / other" : rawValue.uppercased()
+    }
+
     /// The chip this Mac has, from its CPU name ("Apple M4 Pro"). Newer or unparseable names give `.other`.
     public static func detect() -> ChipFamily {
         var size = 0
