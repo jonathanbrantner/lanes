@@ -1,4 +1,5 @@
 import SwiftUI
+import SystemMonitorCore
 
 /// One compact table: each item with a Menu bar checkbox and a Panel checkbox.
 struct SettingsView: View {
@@ -56,6 +57,20 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.menu)
+
+            Divider()
+            Picker("Temperature unit", selection: $settings.useFahrenheit) {
+                Text("°C").tag(false)
+                Text("°F").tag(true)
+            }
+            .pickerStyle(.segmented)
+            Picker("Chip", selection: $settings.chipOverride) {
+                Text("Automatic (\(ChipFamily.detect().title))").tag(ChipFamily?.none)
+                ForEach(ChipFamily.allCases) { chip in Text(chip.title).tag(ChipFamily?.some(chip)) }
+            }
+            .pickerStyle(.menu)
+            Text("Lanes runs on Apple Silicon Macs only (M1 or later). Each chip names its temperature sensors differently, so pick yours here if temperatures are missing.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             Divider()
             Toggle("Start at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))

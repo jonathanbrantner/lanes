@@ -1,4 +1,5 @@
 import SwiftUI
+import SystemMonitorCore
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
@@ -53,12 +54,29 @@ final class Settings: ObservableObject {
     private static let panelKey = "panelItems"
     private static let hiddenKey = "hiddenDrives"
     private static let intervalKey = "updateInterval"
+    private static let unitKey = "temperatureUnit"
+    private static let chipKey = "chipOverride"
 
     static let intervals: [TimeInterval] = [1, 2, 5]
 
     /// Seconds between readings. Longer = fewer wake-ups.
     @Published var updateInterval: TimeInterval {
         didSet { UserDefaults.standard.set(updateInterval, forKey: Self.intervalKey) }
+    }
+
+    /// Temperature unit. Readings are always collected in °C and converted when shown.
+    @Published var useFahrenheit: Bool {
+        didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }
+    }
+    /// nil = detect from this Mac's CPU name.
+    @Published var chipOverride: ChipFamily? {
+        didSet { UserDefaults.standard.set(chipOverride?.rawValue, forKey: Self.chipKey) }
+    }
+    /// The chip whose sensor keys are used.
+    var chip: ChipFamily { chipOverride ?? ChipFamily.detect() }
+
+    func temperature(_ celsius: Double) -> String {
+        useFahrenheit ? String(format: "%.0f°F", celsius * 9 / 5 + 32) : String(format: "%.0f°C", celsius)
     }
 
     @Published var menuBarItems: Set<MonitorItem> {
@@ -76,6 +94,8 @@ final class Settings: ObservableObject {
         menuBarItems = Self.load(Self.menuBarKey, default: [.memory, .drives])
         panelItems = Self.load(Self.panelKey, default: Set(MonitorItem.allCases))
         hiddenDrives = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? [])
+        useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
+        chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
         updateInterval = Self.intervals.contains(saved) ? saved : 1
     }

@@ -1,4 +1,5 @@
 import XCTest
+import CPower
 @testable import SystemMonitorCore
 
 /// Sanity checks that run on any Mac, including GitHub's CI runners. They check that each
@@ -97,7 +98,7 @@ final class CollectorTests: XCTestCase {
     // MARK: Thermal
 
     func testThermalValuesAreSaneWhenAvailable() {
-        let thermal = ThermalCollector()
+        let thermal = ThermalCollector(chip: ChipFamily.detect())
         guard let t = thermal.snapshot() else { return }   // nil on VMs without sensors
         for c in [t.cpuC, t.gpuC, t.ssdC].compactMap({ $0 }) {
             XCTAssertTrue(c > 0 && c < 130, "temperature \(c)")
@@ -106,5 +107,22 @@ final class CollectorTests: XCTestCase {
             XCTAssertTrue(fan.rpm >= 0 && fan.maxRPM >= fan.minRPM, "fan \(fan)")
             XCTAssertTrue((0...1).contains(fan.fraction))
         }
+    }
+
+    func testChipFamilyParsesCPUNames() {
+        XCTAssertEqual(ChipFamily.parse("Apple M1"), .m1)
+        XCTAssertEqual(ChipFamily.parse("Apple M2 Max"), .m2)
+        XCTAssertEqual(ChipFamily.parse("Apple M3 Ultra"), .m3)
+        XCTAssertEqual(ChipFamily.parse("Apple M4 Pro"), .m4)
+        XCTAssertEqual(ChipFamily.parse("Apple M5"), .m5)
+        XCTAssertEqual(ChipFamily.parse("Apple M6"), .m6)
+        XCTAssertEqual(ChipFamily.parse("Apple M12"), .other)       // unknown newer chip: scan
+        XCTAssertEqual(ChipFamily.parse("Intel(R) Core(TM) i7"), .other)
+    }
+
+    func testDetectedChipFindsSensorsWhenSMCExists() {
+        let t = ThermalCollector(chip: ChipFamily.detect())
+        guard lanes_smc_open() == 1 else { return }   // VMs
+        if ChipFamily.detect() != .other { XCTAssertTrue(t.foundCPUSensors, "no CPU sensor matched the detected chip") }
     }
 }

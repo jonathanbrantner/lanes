@@ -133,7 +133,7 @@ struct PanelView: View {
                 header(.temperature)
                 Spacer()
                 if let c = monitor.thermal?.cpuC {
-                    Text(String(format: "%.0f °C", c)).monospacedDigit()
+                    Text(settings.temperature(c)).monospacedDigit()
                 }
             }
             // Chart scale: 30 °C (idle) to 100 °C (hot).
@@ -144,10 +144,10 @@ struct PanelView: View {
                 Text("CPU").foregroundStyle(.secondary)
                 Spacer()
                 if let gpu = monitor.thermal?.gpuC {
-                    Text(String(format: "GPU %.0f °C", gpu)).monospacedDigit().foregroundStyle(.secondary)
+                    Text("GPU \(settings.temperature(gpu))").monospacedDigit().foregroundStyle(.secondary)
                 }
                 if let ssd = monitor.thermal?.ssdC {
-                    Text(String(format: "SSD %.0f °C", ssd)).monospacedDigit().foregroundStyle(.secondary)
+                    Text("SSD \(settings.temperature(ssd))").monospacedDigit().foregroundStyle(.secondary)
                 }
             }
             .font(.caption)

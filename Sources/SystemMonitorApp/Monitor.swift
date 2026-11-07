@@ -61,7 +61,7 @@ final class Monitor: ObservableObject {
 
     private func applySettings() {
         sampler?.configure(shown: settings.menuBarItems.union(settings.panelItems),
-                          interval: settings.updateInterval)
+                          interval: settings.updateInterval, chip: settings.chip)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -103,7 +103,8 @@ private final class Sampler {
     private let cpu = CPUCollector()
     private let gpu = GPUCollector()
     private let power = PowerCollector()
-    private lazy var thermal = ThermalCollector()   // walks the SMC key list once, only if shown
+    private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
+    private var chip = ChipFamily.detect()
     private let drives: DriveCollector
     private var timer: DispatchSourceTimer?
 
@@ -117,9 +118,10 @@ private final class Sampler {
         drives = DriveCollector(queue: queue)
     }
 
-    func configure(shown: Set<MonitorItem>, interval: TimeInterval) {
+    func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily) {
         queue.async {
             self.shown = shown
+            if chip != self.chip { self.chip = chip; self.thermal = nil }
             let restart = interval != self.interval || self.timer == nil
             self.interval = interval
             if restart { self.startTimer() }
@@ -159,7 +161,8 @@ private final class Sampler {
             push(&state.powerHistory, state.power?.systemWatts)
         }
         if shown.contains(.temperature) {
-            if tickCount % 2 == 1 { state.thermal = thermal.snapshot() }   // temperatures change slowly
+            if thermal == nil { thermal = ThermalCollector(chip: chip); state.thermal = nil; state.tempHistory = [] }
+            if tickCount % 2 == 1 { state.thermal = thermal?.snapshot() }   // temperatures change slowly
             push(&state.tempHistory, state.thermal?.cpuC)
         }
 

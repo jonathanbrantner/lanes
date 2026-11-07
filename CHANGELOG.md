@@ -3,6 +3,7 @@
 ## 0.4.0 (unreleased)
 
 - Optional Temperature item: CPU, GPU and SSD temperature plus fan speed, read without admin rights. Hidden when a Mac does not expose the sensors.
+- Temperature unit (°C or °F) and chip picker in Settings (Automatic, M1 to M6, or Other / newer).
 - `powermon --temps` lists every temperature sensor and SMC temperature/fan key a Mac exposes.
 - Memory Used now matches Activity Monitor's definition (was 4.8% low).
 - Displayed CPU and drive speeds averaged over a 5 s window like Activity Monitor; charts keep 1 s samples.

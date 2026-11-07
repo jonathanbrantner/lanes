@@ -42,8 +42,8 @@ extension Monitor {
                                   labelColor: MonitorItem.power.nsColor))
         }
         if on.contains(.temperature), let c = thermal?.cpuC {
-            cells.append(IconCell(layout: .labeled(label: "TEMP", value: String(format: "%.0f°C", c)),
-                                  color: .labelColor, widthSamples: ["TEMP", "100°C"],
+            cells.append(IconCell(layout: .labeled(label: "TEMP", value: settings.temperature(c)),
+                                  color: .labelColor, widthSamples: ["TEMP", "212°F"],
                                   labelColor: MonitorItem.temperature.nsColor))
         }
         if on.contains(.cpu), let cpu {

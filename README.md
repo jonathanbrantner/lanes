@@ -31,7 +31,7 @@ separate read and write speeds, and stays out of the way.
 - Memory as Activity Monitor counts it (app, wired, compressed), with the menu bar value
   turning amber or red when macOS reports memory pressure. Cached files and swap listed.
 - Optional: internal disk I/O, whole-system power in watts, CPU and GPU usage, and
-  temperatures (CPU, GPU, SSD) with fan speed on Macs that have a fan.
+  temperatures (CPU, GPU, SSD) in °C or °F, with fan speed on Macs that have a fan.
 - Settings for what shows in the menu bar and in the panel, the update interval
   (1, 2 or 5 seconds), and start at login.
 - Light: one low-priority sampler thread, one kernel call per reading, nothing drawn while
@@ -64,11 +64,15 @@ your Mac and copies it to `/Applications`. Then open Lanes like any other app.
 
 ## Requirements
 
-- Apple Silicon Mac, macOS 14 or newer.
+- macOS only, on an Apple Silicon Mac (M1 or later), macOS 14 or newer. No Intel Macs.
 - Power, temperature and fan readings come from Apple-private interfaces (SMC, IOReport and IOHID) that can change
   between macOS versions. When a reading is not available, Lanes hides that row instead of
   showing a made-up number. CPU, memory and Neural Engine power are not shown because they
   are not exposed without admin rights.
+- Temperature sensors are named differently on every chip generation. Lanes has a sensor table
+  for M1, M2, M3, M4, M5 and M6 (taken from the open-source Stats app's sensor list, and checked
+  on an M6 only). It picks yours automatically; if temperatures are missing, choose your chip in
+  Settings. Newer chips fall back to "Other / newer", which scans for sensors.
 
 ## How it works
 
