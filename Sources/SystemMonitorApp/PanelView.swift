@@ -93,8 +93,7 @@ struct PanelView: View {
         case .drives: drivesSection
         case .disk: diskSection
         case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory,
-                                  temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory,
-                                  fan: monitor.thermal?.fans.first)
+                                  temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory)
         case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
                                   temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory)
         case .power: powerSection
@@ -121,11 +120,20 @@ struct PanelView: View {
                 if let gpu = monitor.power?.gpuWatts {
                     Text(String(format: "GPU %.2f W", gpu)).monospacedDigit().foregroundStyle(.secondary)
                 }
-                if let avg = shownTemp(monitor.thermal?.averageC) {
-                    Text("Avg \(avg)").monospacedDigit().foregroundStyle(.secondary)
-                }
             }
             .font(.caption)
+            // Average temperature and fan speed, shown together under Power.
+            let avg = shownTemp(monitor.thermal?.averageC)
+            let fan = settings.showTemperatures ? monitor.thermal?.fans.first : nil
+            if avg != nil || fan != nil {
+                HStack {
+                    Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(.red).frame(width: 12)
+                    if let avg { Text("Avg \(avg)").monospacedDigit() }
+                    Spacer()
+                    if let fan { Text("Fan \(String(format: "%.0f", fan.rpm)) RPM").monospacedDigit() }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -224,7 +232,7 @@ struct PanelView: View {
     // MARK: CPU / GPU
 
     private func percentSection(_ item: MonitorItem, value: Double?, history: [Double],
-                                temp: String?, tempHistory: [Double], fan: FanReading? = nil) -> some View {
+                                temp: String?, tempHistory: [Double]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 header(item)
@@ -234,14 +242,6 @@ struct PanelView: View {
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
             tempChart(tempHistory, .red)
-            if let fan {
-                HStack {
-                    Text("Fan").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(String(format: "%.0f RPM", fan.rpm)).monospacedDigit().foregroundStyle(.secondary)
-                }
-                .font(.caption)
-            }
         }
     }
 
@@ -251,7 +251,10 @@ struct PanelView: View {
     private func tempChart(_ history: [Double], _ color: Color) -> some View {
         if settings.showTemperatures, history.count > 2, let lo = history.min(), let hi = history.max() {
             let span = max(hi - lo, 10)
-            HistoryChart(values: history.map { ($0 - lo) / span }, color: color).frame(height: 14)
+            HStack(spacing: 4) {
+                Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
+                HistoryChart(values: history.map { ($0 - lo) / span }, color: color).frame(height: 14)
+            }
         }
     }
 

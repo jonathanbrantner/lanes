@@ -198,11 +198,11 @@ private final class Sampler {
     private func sampleThermal() {
         var wanted: ThermalWanted = []
         if temperatures {
-            if shown.contains(.cpu) { wanted.formUnion([.cpu, .fan]) }
+            if shown.contains(.cpu) { wanted.insert(.cpu) }
             if shown.contains(.gpu) { wanted.insert(.gpu) }
             if shown.contains(.memory) { wanted.insert(.ram) }
             if shown.contains(.disk) { wanted.insert(.ssd) }
-            if shown.contains(.power) { wanted.formUnion([.cpu, .gpu, .ram, .ssd]) }   // for the average
+            if shown.contains(.power) { wanted.formUnion([.cpu, .gpu, .ram, .ssd, .fan]) }   // average temperature and fan
         }
         guard !wanted.isEmpty else {
             state.thermal = nil
