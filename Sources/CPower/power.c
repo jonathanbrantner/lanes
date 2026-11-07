@@ -243,42 +243,85 @@ extern double IOHIDEventGetFloatValue(IOHIDEventRef event, int32_t field);
 
 static IOHIDEventSystemClientRef g_hid = NULL;
 
-int lanes_hid_temps_read(lanes_temp_sensor *out, int max) {
-    if (!g_hid) {
-        g_hid = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
-        if (!g_hid) return -1;
-        int page = 0xff00, usage = 5;
-        CFNumberRef p = CFNumberCreate(NULL, kCFNumberIntType, &page);
-        CFNumberRef u = CFNumberCreate(NULL, kCFNumberIntType, &usage);
-        const void *keys[] = { CFSTR("PrimaryUsagePage"), CFSTR("PrimaryUsage") };
-        const void *vals[] = { p, u };
-        CFDictionaryRef match = CFDictionaryCreate(NULL, keys, vals, 2, &kCFTypeDictionaryKeyCallBacks,
-                                                   &kCFTypeDictionaryValueCallBacks);
-        IOHIDEventSystemClientSetMatching(g_hid, match);
-        CFRelease(match); CFRelease(p); CFRelease(u);
-    }
+static IOHIDEventSystemClientRef hid_client(void) {
+    if (g_hid) return g_hid;
+    g_hid = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
+    if (!g_hid) return NULL;
+    int page = 0xff00, usage = 5;
+    CFNumberRef p = CFNumberCreate(NULL, kCFNumberIntType, &page);
+    CFNumberRef u = CFNumberCreate(NULL, kCFNumberIntType, &usage);
+    const void *keys[] = { CFSTR("PrimaryUsagePage"), CFSTR("PrimaryUsage") };
+    const void *vals[] = { p, u };
+    CFDictionaryRef match = CFDictionaryCreate(NULL, keys, vals, 2, &kCFTypeDictionaryKeyCallBacks,
+                                               &kCFTypeDictionaryValueCallBacks);
+    IOHIDEventSystemClientSetMatching(g_hid, match);
+    CFRelease(match); CFRelease(p); CFRelease(u);
+    return g_hid;
+}
 
-    CFArrayRef services = IOHIDEventSystemClientCopyServices(g_hid);
+static void hid_product(IOHIDServiceClientRef svc, char *name, size_t size) {
+    strlcpy(name, "?", size);
+    CFTypeRef product = IOHIDServiceClientCopyProperty(svc, CFSTR("Product"));
+    if (product) {
+        if (CFGetTypeID(product) == CFStringGetTypeID())
+            CFStringGetCString((CFStringRef)product, name, size, kCFStringEncodingUTF8);
+        CFRelease(product);
+    }
+}
+
+static double hid_celsius(IOHIDServiceClientRef svc, int *ok) {
+    IOHIDEventRef ev = IOHIDServiceClientCopyEvent(svc, HID_EVENT_TEMPERATURE, 0, 0);
+    if (!ev) { *ok = 0; return 0; }
+    double c = IOHIDEventGetFloatValue(ev, HID_EVENT_TEMPERATURE << 16);
+    CFRelease(ev);
+    *ok = 1;
+    return c;
+}
+
+int lanes_hid_temps_read(lanes_temp_sensor *out, int max) {
+    IOHIDEventSystemClientRef client = hid_client();
+    if (!client) return -1;
+    CFArrayRef services = IOHIDEventSystemClientCopyServices(client);
     if (!services) return -1;
     int count = 0;
     for (CFIndex i = 0; i < CFArrayGetCount(services) && count < max; i++) {
         IOHIDServiceClientRef svc = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
-        IOHIDEventRef ev = IOHIDServiceClientCopyEvent(svc, HID_EVENT_TEMPERATURE, 0, 0);
-        if (!ev) continue;
-        double c = IOHIDEventGetFloatValue(ev, HID_EVENT_TEMPERATURE << 16);
-        CFRelease(ev);
-
-        char name[64] = "?";
-        CFTypeRef product = IOHIDServiceClientCopyProperty(svc, CFSTR("Product"));
-        if (product) {
-            if (CFGetTypeID(product) == CFStringGetTypeID())
-                CFStringGetCString((CFStringRef)product, name, sizeof(name), kCFStringEncodingUTF8);
-            CFRelease(product);
-        }
-        strlcpy(out[count].name, name, sizeof(out[count].name));
+        int ok;
+        double c = hid_celsius(svc, &ok);
+        if (!ok) continue;
+        hid_product(svc, out[count].name, sizeof(out[count].name));
         out[count].celsius = c;
         count++;
     }
     CFRelease(services);
     return count;
+}
+
+// One sensor by name prefix. The matching service is found once and kept, so every later read
+// is a single event instead of a pass over all ~40 sensors.
+static IOHIDServiceClientRef g_named = NULL;
+static char g_namedPrefix[32] = {0};
+
+int lanes_hid_named_temp(const char *prefix, double *celsius) {
+    if (!g_named || strcmp(g_namedPrefix, prefix) != 0) {
+        if (g_named) { CFRelease(g_named); g_named = NULL; }
+        IOHIDEventSystemClientRef client = hid_client();
+        if (!client) return 0;
+        CFArrayRef services = IOHIDEventSystemClientCopyServices(client);
+        if (!services) return 0;
+        for (CFIndex i = 0; i < CFArrayGetCount(services) && !g_named; i++) {
+            IOHIDServiceClientRef svc = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
+            char name[64];
+            hid_product(svc, name, sizeof(name));
+            if (strncmp(name, prefix, strlen(prefix)) == 0) { g_named = (IOHIDServiceClientRef)CFRetain(svc); }
+        }
+        CFRelease(services);
+        strlcpy(g_namedPrefix, prefix, sizeof(g_namedPrefix));
+        if (!g_named) return 0;
+    }
+    int ok;
+    double c = hid_celsius(g_named, &ok);
+    if (!ok) return 0;
+    *celsius = c;
+    return 1;
 }

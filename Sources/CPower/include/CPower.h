@@ -45,4 +45,8 @@ typedef struct {
 // number of sensors, or -1 if the sensor system is unavailable.
 int lanes_hid_temps_read(lanes_temp_sensor *out, int max);
 
+// Reads one IOHID temperature sensor whose name starts with `prefix` (for example "NAND").
+// The sensor is looked up once and cached, so repeated calls are cheap. Returns 1 on success.
+int lanes_hid_named_temp(const char *prefix, double *celsius);
+
 #endif

@@ -41,19 +41,16 @@ extension Monitor {
                                   color: .labelColor, widthSamples: ["PWR", "88.8 W"],
                                   labelColor: MonitorItem.power.nsColor))
         }
-        if on.contains(.temperature), let c = thermal?.cpuC {
-            cells.append(IconCell(layout: .labeled(label: "TEMP", value: settings.temperature(c)),
-                                  color: .labelColor, widthSamples: ["TEMP", "212°F"],
-                                  labelColor: MonitorItem.temperature.nsColor))
-        }
         if on.contains(.cpu), let cpu {
-            cells.append(IconCell(layout: .labeled(label: "CPU", value: String(format: "%.0f%%", cpu * 100)),
-                                  color: .labelColor, widthSamples: ["CPU", "100%"],
+            let temp = settings.showTemperatures ? thermal?.cpuC.map { " " + settings.temperature($0, symbol: false) } : nil
+            cells.append(IconCell(layout: .labeled(label: "CPU", value: String(format: "%.0f%%", cpu * 100) + (temp ?? "")),
+                                  color: .labelColor, widthSamples: ["CPU", temp == nil ? "100%" : "100% 212°"],
                                   labelColor: MonitorItem.cpu.nsColor))
         }
         if on.contains(.gpu), let gpu {
-            cells.append(IconCell(layout: .labeled(label: "GPU", value: String(format: "%.0f%%", gpu * 100)),
-                                  color: .labelColor, widthSamples: ["GPU", "100%"],
+            let temp = settings.showTemperatures ? thermal?.gpuC.map { " " + settings.temperature($0, symbol: false) } : nil
+            cells.append(IconCell(layout: .labeled(label: "GPU", value: String(format: "%.0f%%", gpu * 100) + (temp ?? "")),
+                                  color: .labelColor, widthSamples: ["GPU", temp == nil ? "100%" : "100% 212°"],
                                   labelColor: MonitorItem.gpu.nsColor))
         }
         return cells

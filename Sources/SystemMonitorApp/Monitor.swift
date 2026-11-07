@@ -19,7 +19,9 @@ struct MonitorState {
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
-    var tempHistory: [Double] = []      // CPU °C
+    var cpuTempHistory: [Double] = []   // °C, one point per thermal read (about every 3 s)
+    var gpuTempHistory: [Double] = []
+    var ramTempHistory: [Double] = []
     var driveHistory: [String: [DriveSample]] = [:]
 }
 
@@ -61,7 +63,8 @@ final class Monitor: ObservableObject {
 
     private func applySettings() {
         sampler?.configure(shown: settings.menuBarItems.union(settings.panelItems),
-                          interval: settings.updateInterval, chip: settings.chip)
+                          interval: settings.updateInterval, chip: settings.chip,
+                          temperatures: settings.showTemperatures)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -75,7 +78,9 @@ final class Monitor: ObservableObject {
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
-    var tempHistory: [Double] { state.tempHistory }
+    var cpuTempHistory: [Double] { state.cpuTempHistory }
+    var gpuTempHistory: [Double] { state.gpuTempHistory }
+    var ramTempHistory: [Double] { state.ramTempHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
 
     /// External drives that are connected and not switched off in settings.
@@ -105,6 +110,7 @@ private final class Sampler {
     private let power = PowerCollector()
     private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
     private var chip = ChipFamily.detect()
+    private var temperatures = true
     private let drives: DriveCollector
     private var timer: DispatchSourceTimer?
 
@@ -118,10 +124,11 @@ private final class Sampler {
         drives = DriveCollector(queue: queue)
     }
 
-    func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily) {
+    func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool) {
         queue.async {
             self.shown = shown
-            if chip != self.chip { self.chip = chip; self.thermal = nil }
+            self.temperatures = temperatures
+            if chip != self.chip { self.chip = chip; self.thermal = nil; self.state.thermal = nil }
             let restart = interval != self.interval || self.timer == nil
             self.interval = interval
             if restart { self.startTimer() }
@@ -160,11 +167,7 @@ private final class Sampler {
             if tickCount % 2 == 1 { state.power = power.snapshot() }   // heaviest read: every other tick
             push(&state.powerHistory, state.power?.systemWatts)
         }
-        if shown.contains(.temperature) {
-            if thermal == nil { thermal = ThermalCollector(chip: chip); state.thermal = nil; state.tempHistory = [] }
-            if tickCount % 2 == 1 { state.thermal = thermal?.snapshot() }   // temperatures change slowly
-            push(&state.tempHistory, state.thermal?.cpuC)
-        }
+        sampleThermal()
 
         let wantsDrives = shown.contains(.drives) || shown.contains(.disk)
         let rates = wantsDrives ? drives.rates(includeInternal: shown.contains(.disk)) : []
@@ -188,6 +191,31 @@ private final class Sampler {
         }
 
         onSample?(state)
+    }
+
+    /// Temperatures change slowly, so they are read about every 3 seconds whatever the update interval,
+    /// and only the sensors whose section is on screen.
+    private func sampleThermal() {
+        var wanted: ThermalWanted = []
+        if temperatures {
+            if shown.contains(.cpu) { wanted.formUnion([.cpu, .fan]) }
+            if shown.contains(.gpu) { wanted.insert(.gpu) }
+            if shown.contains(.memory) { wanted.insert(.ram) }
+            if shown.contains(.disk) { wanted.insert(.ssd) }
+            if shown.contains(.power) { wanted.formUnion([.cpu, .gpu, .ram, .ssd]) }   // for the average
+        }
+        guard !wanted.isEmpty else {
+            state.thermal = nil
+            state.cpuTempHistory = []; state.gpuTempHistory = []; state.ramTempHistory = []
+            return
+        }
+        let every = max(1, Int((3.0 / interval).rounded(.up)))
+        guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
+        if thermal == nil { thermal = ThermalCollector(chip: chip) }
+        state.thermal = thermal?.snapshot(wanted: wanted)
+        push(&state.cpuTempHistory, state.thermal?.cpuC)
+        push(&state.gpuTempHistory, state.thermal?.gpuC)
+        push(&state.ramTempHistory, state.thermal?.ramC)
     }
 
     /// Number of ticks that make up Activity Monitor's default 5 second averaging window.

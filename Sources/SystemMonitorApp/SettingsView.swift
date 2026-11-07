@@ -59,9 +59,9 @@ struct SettingsView: View {
             .pickerStyle(.menu)
 
             Divider()
-            // Only relevant when Temperature is switched on somewhere.
-            if settings.menuBarItems.contains(.temperature) || settings.panelItems.contains(.temperature) {
-                Divider()
+            Divider()
+            Toggle("Show temperatures", isOn: $settings.showTemperatures).toggleStyle(.switch)
+            if settings.showTemperatures {
                 HStack {
                     Text("Unit")
                     Spacer()
