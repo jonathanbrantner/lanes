@@ -11,6 +11,10 @@ Lanes shows how much memory is in use and how fast your external drives are read
 writing, right in the menu bar. Click it for a panel with charts. It uses about 14 MB of
 memory and 0.2% CPU while idle.
 
+**New: temperatures are now available.** Lanes can show CPU, GPU and SSD temperatures (and memory
+on chips that have a memory sensor) right inside each panel section, plus an average temperature
+and fan speed. Switch between °C and °F in Settings. See [Features](#features).
+
 <p align="center">
   <img src="docs/menubar.png" width="310" alt="Lanes in the menu bar: memory and external drive read/write speed"><br>
   <img src="docs/panel.png" width="340" alt="The Lanes panel: memory, external drives, internal disk, power, CPU and GPU">
