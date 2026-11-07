@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
-    case memory, drives, disk, power, cpu, gpu
+    case memory, drives, disk, power, cpu, gpu, temperature
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .power: "Power"
         case .cpu: "CPU"
         case .gpu: "GPU"
+        case .temperature: "Temperature"
         }
     }
 
@@ -25,6 +26,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .power: "bolt.fill"
         case .cpu: "cpu"
         case .gpu: "display"
+        case .temperature: "thermometer.medium"
         }
     }
 
@@ -37,6 +39,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .power: .systemYellow
         case .cpu: .systemIndigo
         case .gpu: .systemPurple
+        case .temperature: .systemRed
         }
     }
 

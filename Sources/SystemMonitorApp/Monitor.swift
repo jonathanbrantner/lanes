@@ -13,11 +13,13 @@ struct MonitorState {
     var cpu: Double?
     var gpu: Double?
     var power: PowerSnapshot?
+    var thermal: ThermalSnapshot?
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
+    var tempHistory: [Double] = []      // CPU °C
     var driveHistory: [String: [DriveSample]] = [:]
 }
 
@@ -68,10 +70,12 @@ final class Monitor: ObservableObject {
     var cpu: Double? { state.cpu }
     var gpu: Double? { state.gpu }
     var power: PowerSnapshot? { state.power }
+    var thermal: ThermalSnapshot? { state.thermal }
     var ramHistory: [Double] { state.ramHistory }
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
+    var tempHistory: [Double] { state.tempHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
 
     /// External drives that are connected and not switched off in settings.
@@ -99,6 +103,7 @@ private final class Sampler {
     private let cpu = CPUCollector()
     private let gpu = GPUCollector()
     private let power = PowerCollector()
+    private lazy var thermal = ThermalCollector()   // walks the SMC key list once, only if shown
     private let drives: DriveCollector
     private var timer: DispatchSourceTimer?
 
@@ -152,6 +157,10 @@ private final class Sampler {
         if shown.contains(.power) {
             if tickCount % 2 == 1 { state.power = power.snapshot() }   // heaviest read: every other tick
             push(&state.powerHistory, state.power?.systemWatts)
+        }
+        if shown.contains(.temperature) {
+            if tickCount % 2 == 1 { state.thermal = thermal.snapshot() }   // temperatures change slowly
+            push(&state.tempHistory, state.thermal?.cpuC)
         }
 
         let wantsDrives = shown.contains(.drives) || shown.contains(.disk)

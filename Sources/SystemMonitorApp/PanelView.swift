@@ -81,6 +81,7 @@ struct PanelView: View {
             switch item {
             case .gpu: return monitor.gpu != nil
             case .power: return monitor.power != nil
+            case .temperature: return monitor.thermal != nil
             default: return true
             }
         }
@@ -95,6 +96,7 @@ struct PanelView: View {
         case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory)
         case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory)
         case .power: powerSection
+        case .temperature: temperatureSection
         }
     }
 
@@ -120,6 +122,43 @@ struct PanelView: View {
                 }
             }
             .font(.caption)
+        }
+    }
+
+    // MARK: Temperature
+
+    private var temperatureSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                header(.temperature)
+                Spacer()
+                if let c = monitor.thermal?.cpuC {
+                    Text(String(format: "%.0f °C", c)).monospacedDigit()
+                }
+            }
+            // Chart scale: 30 °C (idle) to 100 °C (hot).
+            HistoryChart(values: monitor.tempHistory.map { min(max(($0 - 30) / 70, 0), 1) },
+                         color: MonitorItem.temperature.color)
+                .frame(height: 36)
+            HStack {
+                Text("CPU").foregroundStyle(.secondary)
+                Spacer()
+                if let gpu = monitor.thermal?.gpuC {
+                    Text(String(format: "GPU %.0f °C", gpu)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                if let ssd = monitor.thermal?.ssdC {
+                    Text(String(format: "SSD %.0f °C", ssd)).monospacedDigit().foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+            if let fan = monitor.thermal?.fans.first {
+                HStack {
+                    Text("Fan").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "%.0f RPM", fan.rpm)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
         }
     }
 

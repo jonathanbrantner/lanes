@@ -106,6 +106,7 @@ _Static_assert(sizeof(SMCKeyData) == 80, "SMCKeyData must match the kernel's lay
 #define SMC_HANDLE_EVENT 2
 #define SMC_CMD_READ_BYTES 5
 #define SMC_CMD_READ_KEYINFO 9
+#define SMC_CMD_READ_INDEX 8
 #define SMC_TYPE_FLT 0x666c7420u   /* 'flt ' */
 
 static io_connect_t g_smc = 0;
@@ -128,7 +129,7 @@ static int smc_call(SMCKeyData *in, SMCKeyData *out) {
 
 // Key info (type and size) never changes, so it is fetched once per key and cached.
 // After that a read is a single round trip to the SMC.
-#define SMC_CACHE_MAX 8
+#define SMC_CACHE_MAX 96
 static struct { uint32_t key; SMCKeyInfo info; } g_keyCache[SMC_CACHE_MAX];
 static int g_keyCacheCount = 0;
 
@@ -151,13 +152,23 @@ static int smc_key_info(uint32_t key, SMCKeyInfo *info) {
     return 1;
 }
 
-int lanes_smc_read_float(const char *key, double *value) {
+static uint32_t smc_key_code(const char *key) {
+    return ((uint32_t)key[0] << 24) | ((uint32_t)key[1] << 16) | ((uint32_t)key[2] << 8) | (uint32_t)key[3];
+}
+
+static void smc_code_string(uint32_t code, char out[5]) {
+    out[0] = (char)(code >> 24); out[1] = (char)(code >> 16); out[2] = (char)(code >> 8); out[3] = (char)code;
+    out[4] = 0;
+}
+
+int lanes_smc_read_number(const char *key, double *value, char type_out[5]) {
     if (!g_smc || !key || strlen(key) != 4) return 0;
 
-    uint32_t k = ((uint32_t)key[0] << 24) | ((uint32_t)key[1] << 16) | ((uint32_t)key[2] << 8) | (uint32_t)key[3];
+    uint32_t k = smc_key_code(key);
     SMCKeyInfo info;
     if (!smc_key_info(k, &info)) return 0;
-    if (info.dataType != SMC_TYPE_FLT || info.dataSize != 4) return 0;
+    if (type_out) smc_code_string(info.dataType, type_out);
+    if (info.dataSize == 0 || info.dataSize > 4) return 0;
 
     SMCKeyData in, out;
     memset(&in, 0, sizeof(in));
@@ -167,8 +178,107 @@ int lanes_smc_read_float(const char *key, double *value) {
     in.data8 = SMC_CMD_READ_BYTES;
     if (!smc_call(&in, &out)) return 0;
 
-    float f;
-    memcpy(&f, out.bytes, sizeof(f));
-    *value = (double)f;
+    switch (info.dataType) {
+    case 0x666c7420u: {   /* 'flt ' little-endian float */
+        if (info.dataSize != 4) return 0;
+        float f;
+        memcpy(&f, out.bytes, sizeof(f));
+        *value = (double)f;
+        return 1;
+    }
+    case 0x75693820u: *value = out.bytes[0]; return 1;                                   /* 'ui8 ' */
+    case 0x75693136u: *value = (double)(((unsigned)out.bytes[0] << 8) | out.bytes[1]); return 1;   /* 'ui16' */
+    case 0x75693332u:                                                                     /* 'ui32' */
+        *value = (double)(((uint32_t)out.bytes[0] << 24) | ((uint32_t)out.bytes[1] << 16)
+                          | ((uint32_t)out.bytes[2] << 8) | (uint32_t)out.bytes[3]);
+        return 1;
+    case 0x66706532u:                                                                     /* 'fpe2' */
+        *value = (double)(((unsigned)out.bytes[0] << 8) | out.bytes[1]) / 4.0;
+        return 1;
+    case 0x73703738u:                                                                     /* 'sp78' */
+        *value = (double)(int16_t)(((unsigned)out.bytes[0] << 8) | out.bytes[1]) / 256.0;
+        return 1;
+    default: return 0;
+    }
+}
+
+int lanes_smc_read_float(const char *key, double *value) {
+    char type[5];
+    if (!lanes_smc_read_number(key, value, type)) return 0;
+    return strcmp(type, "flt ") == 0;
+}
+
+int lanes_smc_key_count(void) {
+    double n = 0;
+    if (!lanes_smc_read_number("#KEY", &n, NULL)) return 0;
+    return (int)n;
+}
+
+int lanes_smc_key_at(int index, char out[5]) {
+    if (!g_smc || index < 0) return 0;
+    SMCKeyData in, res;
+    memset(&in, 0, sizeof(in));
+    memset(&res, 0, sizeof(res));
+    in.data8 = SMC_CMD_READ_INDEX;
+    in.data32 = (uint32_t)index;
+    if (!smc_call(&in, &res)) return 0;
+    smc_code_string(res.key, out);
     return 1;
+}
+
+// MARK: - IOHID temperature sensors (private API, declared by hand)
+
+typedef struct __IOHIDEventSystemClient *IOHIDEventSystemClientRef;
+typedef struct __IOHIDServiceClient *IOHIDServiceClientRef;
+typedef struct __IOHIDEvent *IOHIDEventRef;
+
+extern IOHIDEventSystemClientRef IOHIDEventSystemClientCreate(CFAllocatorRef allocator);
+extern int IOHIDEventSystemClientSetMatching(IOHIDEventSystemClientRef client, CFDictionaryRef match);
+extern CFArrayRef IOHIDEventSystemClientCopyServices(IOHIDEventSystemClientRef client);
+extern CFTypeRef IOHIDServiceClientCopyProperty(IOHIDServiceClientRef service, CFStringRef key);
+extern IOHIDEventRef IOHIDServiceClientCopyEvent(IOHIDServiceClientRef service, int64_t type, int32_t options, int64_t timeout);
+extern double IOHIDEventGetFloatValue(IOHIDEventRef event, int32_t field);
+
+#define HID_EVENT_TEMPERATURE 15
+
+static IOHIDEventSystemClientRef g_hid = NULL;
+
+int lanes_hid_temps_read(lanes_temp_sensor *out, int max) {
+    if (!g_hid) {
+        g_hid = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
+        if (!g_hid) return -1;
+        int page = 0xff00, usage = 5;
+        CFNumberRef p = CFNumberCreate(NULL, kCFNumberIntType, &page);
+        CFNumberRef u = CFNumberCreate(NULL, kCFNumberIntType, &usage);
+        const void *keys[] = { CFSTR("PrimaryUsagePage"), CFSTR("PrimaryUsage") };
+        const void *vals[] = { p, u };
+        CFDictionaryRef match = CFDictionaryCreate(NULL, keys, vals, 2, &kCFTypeDictionaryKeyCallBacks,
+                                                   &kCFTypeDictionaryValueCallBacks);
+        IOHIDEventSystemClientSetMatching(g_hid, match);
+        CFRelease(match); CFRelease(p); CFRelease(u);
+    }
+
+    CFArrayRef services = IOHIDEventSystemClientCopyServices(g_hid);
+    if (!services) return -1;
+    int count = 0;
+    for (CFIndex i = 0; i < CFArrayGetCount(services) && count < max; i++) {
+        IOHIDServiceClientRef svc = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
+        IOHIDEventRef ev = IOHIDServiceClientCopyEvent(svc, HID_EVENT_TEMPERATURE, 0, 0);
+        if (!ev) continue;
+        double c = IOHIDEventGetFloatValue(ev, HID_EVENT_TEMPERATURE << 16);
+        CFRelease(ev);
+
+        char name[64] = "?";
+        CFTypeRef product = IOHIDServiceClientCopyProperty(svc, CFSTR("Product"));
+        if (product) {
+            if (CFGetTypeID(product) == CFStringGetTypeID())
+                CFStringGetCString((CFStringRef)product, name, sizeof(name), kCFStringEncodingUTF8);
+            CFRelease(product);
+        }
+        strlcpy(out[count].name, name, sizeof(out[count].name));
+        out[count].celsius = c;
+        count++;
+    }
+    CFRelease(services);
+    return count;
 }

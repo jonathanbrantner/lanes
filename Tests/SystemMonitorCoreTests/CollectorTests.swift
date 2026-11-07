@@ -93,4 +93,18 @@ final class CollectorTests: XCTestCase {
         if let w = p.systemWatts { XCTAssertTrue(w.isFinite && w >= 0, "system watts \(w)") }
         if let g = p.gpuWatts { XCTAssertTrue(g.isFinite && g >= 0, "gpu watts \(g)") }
     }
+
+    // MARK: Thermal
+
+    func testThermalValuesAreSaneWhenAvailable() {
+        let thermal = ThermalCollector()
+        guard let t = thermal.snapshot() else { return }   // nil on VMs without sensors
+        for c in [t.cpuC, t.gpuC, t.ssdC].compactMap({ $0 }) {
+            XCTAssertTrue(c > 0 && c < 130, "temperature \(c)")
+        }
+        for fan in t.fans {
+            XCTAssertTrue(fan.rpm >= 0 && fan.maxRPM >= fan.minRPM, "fan \(fan)")
+            XCTAssertTrue((0...1).contains(fan.fraction))
+        }
+    }
 }
