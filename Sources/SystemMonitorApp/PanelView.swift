@@ -155,7 +155,6 @@ struct PanelView: View {
             HStack {
                 header(.memory)
                 Spacer()
-                if let temp = shownTemp(monitor.thermal?.ramC) { Text(temp).monospacedDigit().foregroundStyle(.secondary) }
                 if let ram = monitor.ram {
                     Text(pressureLabel(ram.pressure)).foregroundStyle(pressureColor(ram.pressure))
                 }
@@ -164,7 +163,7 @@ struct PanelView: View {
                 Text("\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes)) used")
                 HistoryChart(values: monitor.ramHistory, color: pressureColor(ram.pressure))
                     .frame(height: 40)
-                tempChart(monitor.ramTempHistory, .green)
+                tempChart(monitor.ramTempHistory, .red, label: shownTemp(monitor.thermal?.ramC))
                 MemoryBar(ram: ram).frame(height: 8)
                 VStack(spacing: 3) {
                     legend("App Memory", ram.appBytes, .blue)
@@ -216,14 +215,13 @@ struct PanelView: View {
             HStack {
                 header(.disk)
                 Spacer()
-                if let temp = shownTemp(monitor.thermal?.ssdC) { Text(temp).monospacedDigit().foregroundStyle(.secondary) }
             }
             if let drive = monitor.internalDrive {
                 driveRow(drive)
             } else {
                 Text("Waiting for data").foregroundStyle(.secondary)
             }
-            tempChart(monitor.ssdTempHistory, .red)
+            tempChart(monitor.ssdTempHistory, .red, label: shownTemp(monitor.thermal?.ssdC))
         }
     }
 
@@ -249,23 +247,31 @@ struct PanelView: View {
             HStack {
                 header(item)
                 Spacer()
-                if let temp { Text(temp).monospacedDigit().foregroundStyle(.secondary) }
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a").monospacedDigit()
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
-            tempChart(tempHistory, .red)
+            tempChart(tempHistory, .red, label: temp)
         }
     }
 
     /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
     /// so small changes show up, and hides itself until there are a few readings.
     @ViewBuilder
-    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false) -> some View {
-        if always || settings.showTemperatures, history.count > 2, let lo = history.min(), let hi = history.max() {
-            let span = max(hi - lo, 10)
+    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil) -> some View {
+        let enabled = always || settings.showTemperatures
+        if enabled, label != nil || history.count > 2 {
             HStack(spacing: 4) {
+                if let label {
+                    Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        .frame(width: 42, alignment: .leading)
+                }
                 Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
-                HistoryChart(values: history.map { ($0 - lo) / span }, color: color).frame(height: 14)
+                if history.count > 2, let lo = history.min(), let hi = history.max() {
+                    let span = max(hi - lo, 10)
+                    HistoryChart(values: history.map { ($0 - lo) / span }, color: color).frame(height: 14)
+                } else {
+                    Spacer(minLength: 0)
+                }
             }
         }
     }
