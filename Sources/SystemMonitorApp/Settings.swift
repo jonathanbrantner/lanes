@@ -55,6 +55,9 @@ final class Settings: ObservableObject {
     private static let hiddenKey = "hiddenDrives"
     private static let intervalKey = "updateInterval"
     private static let showTempKey = "showTemperatures"
+    private static let coreDetailsKey = "coreDetails"
+    private static let cpuExpandedKey = "cpuExpanded"
+    private static let gpuExpandedKey = "gpuExpanded"
     private static let unitKey = "temperatureUnit"
     private static let chipKey = "chipOverride"
 
@@ -68,6 +71,17 @@ final class Settings: ObservableObject {
     /// Show a temperature inside the CPU, GPU, Memory and Internal disk sections.
     @Published var showTemperatures: Bool {
         didSet { UserDefaults.standard.set(showTemperatures, forKey: Self.showTempKey) }
+    }
+    /// Offer the per-core view in the CPU and GPU boxes.
+    @Published var coreDetails: Bool {
+        didSet { UserDefaults.standard.set(coreDetails, forKey: Self.coreDetailsKey) }
+    }
+    /// Whether the CPU and GPU boxes are currently expanded (remembered).
+    @Published var cpuExpanded: Bool {
+        didSet { UserDefaults.standard.set(cpuExpanded, forKey: Self.cpuExpandedKey) }
+    }
+    @Published var gpuExpanded: Bool {
+        didSet { UserDefaults.standard.set(gpuExpanded, forKey: Self.gpuExpandedKey) }
     }
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {
@@ -102,6 +116,9 @@ final class Settings: ObservableObject {
         menuBarItems = Self.load(Self.menuBarKey, default: [.memory, .drives])
         panelItems = Self.load(Self.panelKey, default: Set(MonitorItem.allCases))
         hiddenDrives = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? [])
+        coreDetails = UserDefaults.standard.bool(forKey: Self.coreDetailsKey)
+        cpuExpanded = UserDefaults.standard.bool(forKey: Self.cpuExpandedKey)
+        gpuExpanded = UserDefaults.standard.bool(forKey: Self.gpuExpandedKey)
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))

@@ -36,6 +36,10 @@ separate read and write speeds, and stays out of the way.
   turning amber or red when macOS reports memory pressure. Cached files and swap listed.
 - Optional: internal disk I/O, whole-system power in watts, CPU and GPU usage, and
   temperatures (CPU, GPU, SSD) in °C or °F, with fan speed on Macs that have a fan.
+- Optional core details: the load of every CPU core, grouped as Super, Performance and Efficiency
+  cores, with one temperature per group, and the GPU's Renderer and Tiler load with its separate
+  temperature sensors. macOS does not report per-core temperatures or per-GPU-core load, so Lanes
+  shows what it does report and never guesses.
 - Settings for what shows in the menu bar and in the panel, the update interval
   (1, 2 or 5 seconds), and start at login.
 - Light: one low-priority sampler thread, one kernel call per reading, nothing drawn while

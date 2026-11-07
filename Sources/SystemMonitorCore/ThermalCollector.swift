@@ -28,6 +28,8 @@ public struct ThermalWanted: OptionSet {
     public static let ram = ThermalWanted(rawValue: 4)
     public static let ssd = ThermalWanted(rawValue: 8)
     public static let fan = ThermalWanted(rawValue: 16)
+    public static let clusters = ThermalWanted(rawValue: 32)
+    public static let gpuSensors = ThermalWanted(rawValue: 64)
 }
 
 public struct ThermalSnapshot: Equatable {
@@ -40,6 +42,11 @@ public struct ThermalSnapshot: Equatable {
     /// Flash storage (NAND) temperature, in °C.
     public let ssdC: Double?
     public let fans: [FanReading]
+    /// Temperature per core class (Super / Performance / Efficiency). Only classes whose sensors
+    /// were checked on a real Mac appear; Apple gives no per-core temperatures.
+    public let clusterC: [ClusterKind: Double]
+    /// The GPU's individual sensors in a fixed order. They are sensors, not cores.
+    public let gpuSensorsC: [Double]
 
     /// Average of whichever of CPU, GPU, memory and SSD temperatures were read. nil if fewer than two.
     public var averageC: Double? {
@@ -47,7 +54,10 @@ public struct ThermalSnapshot: Equatable {
         return parts.count >= 2 ? parts.reduce(0, +) / Double(parts.count) : nil
     }
 
-    public init(cpuC: Double?, gpuC: Double?, ramC: Double? = nil, ssdC: Double?, fans: [FanReading]) {
+    public init(cpuC: Double?, gpuC: Double?, ramC: Double? = nil, ssdC: Double?, fans: [FanReading],
+                clusterC: [ClusterKind: Double] = [:], gpuSensorsC: [Double] = []) {
+        self.clusterC = clusterC
+        self.gpuSensorsC = gpuSensorsC
         self.cpuC = cpuC
         self.gpuC = gpuC
         self.ramC = ramC
@@ -103,6 +113,38 @@ public enum ChipFamily: String, CaseIterable, Identifiable {
         }
     }
 
+    /// SMC keys per core class, for the per-cluster temperatures. An empty result means "no verified
+    /// table for this chip": the cluster rows are then hidden instead of guessed.
+    /// - M6: checked on an M6 Mac mini (2 Super, 4 Performance, 6 Efficiency) by loading one class at a
+    ///   time (`powermon --cluster-probe`): the Super keys saturate with only the 2 Super cores busy,
+    ///   the Performance keys jump when the Performance cores join, the Efficiency keys lead in an
+    ///   Efficiency-only run.
+    /// - M1 to M4: the Efficiency/Performance split from the open-source Stats app's sensor list,
+    ///   not checked on those chips.
+    var clusterKeys: [ClusterKind: [String]] {
+        switch self {
+        case .m1:
+            return [.efficiency: ["Tp09", "Tp0T"],
+                    .performance: ["Tp01", "Tp05", "Tp0D", "Tp0H", "Tp0L", "Tp0P", "Tp0X", "Tp0b"]]
+        case .m2:
+            return [.efficiency: ["Tp1h", "Tp1t", "Tp1p", "Tp1l"],
+                    .performance: ["Tp01", "Tp05", "Tp09", "Tp0D", "Tp0X", "Tp0b", "Tp0f", "Tp0j"]]
+        case .m3:
+            return [.efficiency: ["Te05", "Te0L", "Te0P", "Te0S"],
+                    .performance: ["Tf04", "Tf09", "Tf0A", "Tf0B", "Tf0D", "Tf0E",
+                                   "Tf44", "Tf49", "Tf4A", "Tf4B", "Tf4D", "Tf4E"]]
+        case .m4:
+            return [.efficiency: ["Te05", "Te0S", "Te09", "Te0H"],
+                    .performance: ["Tp01", "Tp05", "Tp09", "Tp0D", "Tp0V", "Tp0Y", "Tp0b", "Tp0e"]]
+        case .m6:
+            return [.superCore: ["Tp0g", "Tp0j", "Tp07", "Tp09"],
+                    .performance: ["Tp0m", "Tp0L", "Tp0I", "Tp0d", "Tp0E", "Tp0G"],
+                    .efficiency: ["Te07", "Te08", "Te09"]]
+        case .m5, .other:
+            return [:]
+        }
+    }
+
     /// (CPU keys, GPU keys, memory keys). Keys a given Mac doesn't have are dropped when the collector starts.
     var keys: (cpu: [String], gpu: [String], ram: [String]) {
         switch self {
@@ -145,6 +187,7 @@ public final class ThermalCollector {
     private var gpuKeys: [String] = []
     private var ramKeys: [String] = []
     private var fanKeys: [(actual: String, lo: Double, hi: Double)] = []
+    private var clusterKeys: [ClusterKind: [String]] = [:]
 
     public init(chip: ChipFamily) {
         self.chip = chip
@@ -169,6 +212,10 @@ public final class ThermalCollector {
         cpuKeys = cpuKeys.filter(Self.reads)
         gpuKeys = gpuKeys.filter(Self.reads)
         ramKeys = ramKeys.filter(Self.reads)
+        for (kind, keys) in chip.clusterKeys {
+            let working = keys.filter(Self.reads)
+            if !working.isEmpty { clusterKeys[kind] = working }
+        }
 
         // Fans: the speed limits never change, so read them once.
         var n = 0.0
@@ -188,6 +235,9 @@ public final class ThermalCollector {
     }
 
     private static func plausible(_ c: Double) -> Bool { c > 5 && c < 130 }
+
+    /// Core classes that have a temperature on this Mac.
+    public var clusterKinds: [ClusterKind] { clusterKeys.keys.sorted() }
 
     /// True if the chosen chip's keys matched sensors on this Mac.
     public var foundCPUSensors: Bool { !cpuKeys.isEmpty }
@@ -213,8 +263,22 @@ public final class ThermalCollector {
             }
         }
 
-        if cpu == nil && gpu == nil && ram == nil && ssd == nil && fans.isEmpty { return nil }
-        return ThermalSnapshot(cpuC: cpu, gpuC: gpu, ramC: ram, ssdC: ssd, fans: fans)
+        var clusters: [ClusterKind: Double] = [:]
+        if wanted.contains(.clusters) {
+            for (kind, keys) in clusterKeys { if let c = average(keys) { clusters[kind] = c } }
+        }
+        var gpuSensors: [Double] = []
+        if wanted.contains(.gpuSensors) {
+            for key in gpuKeys {
+                var v = 0.0
+                if lanes_smc_read_float(key, &v) == 1, Self.plausible(v) { gpuSensors.append(v) }
+            }
+        }
+
+        if cpu == nil && gpu == nil && ram == nil && ssd == nil && fans.isEmpty
+            && clusters.isEmpty && gpuSensors.isEmpty { return nil }
+        return ThermalSnapshot(cpuC: cpu, gpuC: gpu, ramC: ram, ssdC: ssd, fans: fans,
+                               clusterC: clusters, gpuSensorsC: gpuSensors)
     }
 
     private func average(_ keys: [String]) -> Double? {

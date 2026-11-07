@@ -22,6 +22,11 @@ if args.contains("--smc-test") {
     exit(0)
 }
 
+if args.contains("--cluster-probe") {
+    runClusterProbe(efficiencyOnly: args.contains("--e-only"))
+    exit(0)
+}
+
 // --temps: dump every IOHID temperature sensor and every SMC temperature/fan key.
 if args.contains("--temps") {
     var sensors = [lanes_temp_sensor](repeating: lanes_temp_sensor(), count: 128)

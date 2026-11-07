@@ -61,6 +61,8 @@ struct SettingsView: View {
             Divider()
             Divider()
             Toggle("Show temperatures", isOn: $settings.showTemperatures).toggleStyle(.switch)
+            Toggle("Core details", isOn: $settings.coreDetails).toggleStyle(.switch)
+                .help("Adds a chevron to the CPU and GPU boxes to show every core")
             if settings.showTemperatures || settings.menuBarItems.contains(.thermal) || settings.panelItems.contains(.thermal) {
                 HStack {
                     Text("Unit")
@@ -105,6 +107,8 @@ struct SettingsView: View {
                     definition("Swap used", "Memory moved to the SSD because RAM is full. A lot of swap makes the Mac slower.", nil)
                     definition("Pressure", "How hard macOS works to find free memory. \"Under pressure\" means heavy compressing or swapping.", nil)
                     definition("CPU / GPU temp", "Average of that chip's sensors. Memory temperature only appears on chips that have a memory sensor.", .red)
+                    definition("Core details", "Load of each CPU core, grouped as Super, Performance and Efficiency cores, with one temperature per group. Open or close it with the chevron on the CPU and GPU boxes.", .indigo)
+                    definition("GPU sensors", "macOS gives no per-GPU-core numbers, so Renderer and Tiler load are shown, plus the GPU's separate temperature sensors (S1, S2 ...). Sensors are not cores.", .purple)
                     definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
                     definition("Fan", "Current fan speed in revolutions per minute.", nil)
                 }
