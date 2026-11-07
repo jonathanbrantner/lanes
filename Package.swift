@@ -45,7 +45,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SystemMonitorCoreTests",
-            dependencies: ["SystemMonitorCore"]
+            dependencies: ["SystemMonitorCore", "CPower"]
         ),
     ],
     swiftLanguageModes: [.v5]

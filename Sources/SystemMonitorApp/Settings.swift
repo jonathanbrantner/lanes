@@ -1,8 +1,9 @@
 import SwiftUI
+import SystemMonitorCore
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
-    case memory, drives, disk, power, cpu, gpu
+    case memory, drives, disk, power, cpu, gpu, thermal
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .power: "Power"
         case .cpu: "CPU"
         case .gpu: "GPU"
+        case .thermal: "Avg temp & fan"
         }
     }
 
@@ -25,6 +27,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .power: "bolt.fill"
         case .cpu: "cpu"
         case .gpu: "display"
+        case .thermal: "thermometer.medium"
         }
     }
 
@@ -37,6 +40,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .power: .systemYellow
         case .cpu: .systemIndigo
         case .gpu: .systemPurple
+        case .thermal: .systemRed
         }
     }
 
@@ -50,12 +54,37 @@ final class Settings: ObservableObject {
     private static let panelKey = "panelItems"
     private static let hiddenKey = "hiddenDrives"
     private static let intervalKey = "updateInterval"
+    private static let showTempKey = "showTemperatures"
+    private static let unitKey = "temperatureUnit"
+    private static let chipKey = "chipOverride"
 
     static let intervals: [TimeInterval] = [1, 2, 5]
 
     /// Seconds between readings. Longer = fewer wake-ups.
     @Published var updateInterval: TimeInterval {
         didSet { UserDefaults.standard.set(updateInterval, forKey: Self.intervalKey) }
+    }
+
+    /// Show a temperature inside the CPU, GPU, Memory and Internal disk sections.
+    @Published var showTemperatures: Bool {
+        didSet { UserDefaults.standard.set(showTemperatures, forKey: Self.showTempKey) }
+    }
+    /// Temperature unit. Readings are always collected in °C and converted when shown.
+    @Published var useFahrenheit: Bool {
+        didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }
+    }
+    /// nil = detect from this Mac's CPU name.
+    @Published var chipOverride: ChipFamily? {
+        didSet { UserDefaults.standard.set(chipOverride?.rawValue, forKey: Self.chipKey) }
+    }
+    /// The chip whose sensor keys are used.
+    var chip: ChipFamily { chipOverride ?? ChipFamily.detect() }
+
+    /// "46°C" or "115°F"; with `symbol: false` just "46°" (menu bar, where space is tight).
+    func temperature(_ celsius: Double, symbol: Bool = true) -> String {
+        let value = useFahrenheit ? celsius * 9 / 5 + 32 : celsius
+        let unit = symbol ? (useFahrenheit ? "F" : "C") : ""
+        return String(format: "%.0f°%@", value, unit)
     }
 
     @Published var menuBarItems: Set<MonitorItem> {
@@ -73,8 +102,19 @@ final class Settings: ObservableObject {
         menuBarItems = Self.load(Self.menuBarKey, default: [.memory, .drives])
         panelItems = Self.load(Self.panelKey, default: Set(MonitorItem.allCases))
         hiddenDrives = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? [])
+        showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
+        useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
+        chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
         updateInterval = Self.intervals.contains(saved) ? saved : 1
+        // The Avg temp & fan item is new: switch it on in the panel once for existing installs,
+        // since those two numbers used to sit under Power.
+        if !UserDefaults.standard.bool(forKey: "migratedAvgTempItem") {
+            UserDefaults.standard.set(true, forKey: "migratedAvgTempItem")
+            if UserDefaults.standard.stringArray(forKey: Self.panelKey) != nil {
+                panelItems.insert(.thermal)
+            }
+        }
     }
 
     private static func load(_ key: String, default fallback: Set<MonitorItem>) -> Set<MonitorItem> {

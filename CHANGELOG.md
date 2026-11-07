@@ -2,6 +2,10 @@
 
 ## 0.4.0 (unreleased)
 
+- **Temperatures are now available.** CPU, GPU, SSD (and memory where the chip has a sensor) in each panel section with a small graph, plus an "Avg temp & fan" item. Definitions of the memory terms added to Settings.
+- Optional Temperature item: CPU, GPU and SSD temperature plus fan speed, read without admin rights. Hidden when a Mac does not expose the sensors.
+- Temperature unit (°C or °F) and chip picker in Settings (Automatic, M1 to M6, or Other / newer).
+- `powermon --temps` lists every temperature sensor and SMC temperature/fan key a Mac exposes.
 - Memory Used now matches Activity Monitor's definition (was 4.8% low).
 - Displayed CPU and drive speeds averaged over a 5 s window like Activity Monitor; charts keep 1 s samples.
 - `lanes-verify` tool: checks Lanes against vm_stat, top and iostat and fails above 1% error.

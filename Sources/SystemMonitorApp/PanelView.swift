@@ -81,6 +81,7 @@ struct PanelView: View {
             switch item {
             case .gpu: return monitor.gpu != nil
             case .power: return monitor.power != nil
+            case .thermal: return monitor.thermal?.averageC != nil || !(monitor.thermal?.fans.isEmpty ?? true)
             default: return true
             }
         }
@@ -92,9 +93,12 @@ struct PanelView: View {
         case .memory: memorySection
         case .drives: drivesSection
         case .disk: diskSection
-        case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory)
-        case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory)
+        case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory,
+                                  temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory)
+        case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
+                                  temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory)
         case .power: powerSection
+        case .thermal: thermalSection
         }
     }
 
@@ -123,6 +127,27 @@ struct PanelView: View {
         }
     }
 
+    // MARK: Average temperature and fan
+
+    private var thermalSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                header(.thermal)
+                Spacer()
+                if let avg = monitor.thermal?.averageC { Text(settings.temperature(avg)).monospacedDigit() }
+            }
+            if let fan = monitor.thermal?.fans.first {
+                HStack {
+                    Text("Fan").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "%.0f RPM", fan.rpm)).monospacedDigit()
+                }
+                .font(.caption)
+            }
+            tempChart(monitor.avgTempHistory, .red, always: true)
+        }
+    }
+
     // MARK: Memory
 
     private var memorySection: some View {
@@ -138,11 +163,13 @@ struct PanelView: View {
                 Text("\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes)) used")
                 HistoryChart(values: monitor.ramHistory, color: pressureColor(ram.pressure))
                     .frame(height: 40)
+                tempChart(monitor.ramTempHistory, .red, label: shownTemp(monitor.thermal?.ramC))
                 MemoryBar(ram: ram).frame(height: 8)
                 VStack(spacing: 3) {
                     legend("App Memory", ram.appBytes, .blue)
                     legend("Wired", ram.wiredBytes, .orange)
                     legend("Compressed", ram.compressedBytes, .purple)
+                    if ram.otherBytes > 0 { legend("Other", ram.otherBytes, .gray) }
                 }
                 .font(.caption)
                 HStack {
@@ -185,12 +212,16 @@ struct PanelView: View {
 
     private var diskSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            header(.disk)
+            HStack {
+                header(.disk)
+                Spacer()
+            }
             if let drive = monitor.internalDrive {
                 driveRow(drive)
             } else {
                 Text("Waiting for data").foregroundStyle(.secondary)
             }
+            tempChart(monitor.ssdTempHistory, .red, label: shownTemp(monitor.thermal?.ssdC))
         }
     }
 
@@ -210,7 +241,8 @@ struct PanelView: View {
 
     // MARK: CPU / GPU
 
-    private func percentSection(_ item: MonitorItem, value: Double?, history: [Double]) -> some View {
+    private func percentSection(_ item: MonitorItem, value: Double?, history: [Double],
+                                temp: String?, tempHistory: [Double]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 header(item)
@@ -218,7 +250,36 @@ struct PanelView: View {
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a").monospacedDigit()
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
+            tempChart(tempHistory, .red, label: temp)
         }
+    }
+
+    /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
+    /// so small changes show up, and hides itself until there are a few readings.
+    @ViewBuilder
+    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil) -> some View {
+        let enabled = always || settings.showTemperatures
+        if enabled, label != nil || history.count > 2 {
+            HStack(spacing: 4) {
+                if let label {
+                    Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        .frame(width: 42, alignment: .leading)
+                }
+                Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
+                if history.count > 2, let lo = history.min(), let hi = history.max() {
+                    let span = max(hi - lo, 10)
+                    HistoryChart(values: history.map { ($0 - lo) / span }, color: color).frame(height: 14)
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    /// The temperature text for a section header, or nil when temperatures are off or unavailable.
+    private func shownTemp(_ celsius: Double?) -> String? {
+        guard settings.showTemperatures, let celsius else { return nil }
+        return settings.temperature(celsius)
     }
 
     /// Section title with the item's colour icon.

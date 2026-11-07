@@ -22,6 +22,34 @@ if args.contains("--smc-test") {
     exit(0)
 }
 
+// --temps: dump every IOHID temperature sensor and every SMC temperature/fan key.
+if args.contains("--temps") {
+    var sensors = [lanes_temp_sensor](repeating: lanes_temp_sensor(), count: 128)
+    let n = Int(lanes_hid_temps_read(&sensors, 128))
+    print("IOHID temperature sensors: \(n)")
+    for i in 0..<max(n, 0) {
+        let name = withUnsafePointer(to: &sensors[i].name) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 64) { String(cString: $0) }
+        }
+        print(String(format: "  HID  %-32@ %7.2f C", name as NSString, sensors[i].celsius))
+    }
+    print("SMC open:", lanes_smc_open() == 1 ? "ok" : "FAILED")
+    let total = Int(lanes_smc_key_count())
+    print("SMC keys: \(total)")
+    for i in 0..<total {
+        var raw = [CChar](repeating: 0, count: 5)
+        guard lanes_smc_key_at(Int32(i), &raw) == 1 else { continue }
+        let key = String(cString: raw)
+        guard key.hasPrefix("T") || key.hasPrefix("F") else { continue }
+        var v = 0.0
+        var type = [CChar](repeating: 0, count: 5)
+        if lanes_smc_read_number(key, &v, &type) == 1 {
+            print(String(format: "  SMC  %@ (%@) %10.3f", key as NSString, String(cString: type) as NSString, v))
+        }
+    }
+    exit(0)
+}
+
 print("IOReport init:", lanes_power_init() == 1 ? "ok" : "FAILED")
 print("SMC open:     ", lanes_smc_open() == 1 ? "ok" : "FAILED")
 print()
