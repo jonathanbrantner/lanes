@@ -42,8 +42,9 @@ public struct ThermalSnapshot: Equatable {
     /// Flash storage (NAND) temperature, in °C.
     public let ssdC: Double?
     public let fans: [FanReading]
-    /// Temperature per core class (Super / Performance / Efficiency). Only classes whose sensors
-    /// were checked on a real Mac appear; Apple gives no per-core temperatures.
+    /// Temperature per core class (Super / Performance / Efficiency). Only classes that have a sensor
+    /// table for this chip appear (M6 checked on hardware, M1-M4 from Stats' list); Apple gives no
+    /// per-core temperatures.
     public let clusterC: [ClusterKind: Double]
     /// The GPU's individual sensors in a fixed order. They are sensors, not cores.
     public let gpuSensorsC: [Double]
@@ -69,6 +70,17 @@ public struct ThermalSnapshot: Equatable {
 /// Apple Silicon generation. Each one names its temperature sensors differently, so Lanes keeps a
 /// key table per generation (from the open-source Stats app's sensor list, checked on an M6).
 /// `.other` reads every Tp/Te/Tg sensor it finds, for chips Lanes doesn't have a table for yet.
+/// Every key name the SMC lists (about two thousand), for discovering sensors.
+public enum SMCKeys {
+    public static func all() -> [String] {
+        guard lanes_smc_open() == 1 else { return [] }
+        return (0..<Int(lanes_smc_key_count())).compactMap { i in
+            var raw = [CChar](repeating: 0, count: 5)
+            return lanes_smc_key_at(Int32(i), &raw) == 1 ? String(cString: raw) : nil
+        }
+    }
+}
+
 public enum ChipFamily: String, CaseIterable, Identifiable {
     case m1, m2, m3, m4, m5, m6, other
 
@@ -93,11 +105,7 @@ public enum ChipFamily: String, CaseIterable, Identifiable {
 
     /// The chip this Mac has, from its CPU name ("Apple M4 Pro"). Newer or unparseable names give `.other`.
     public static func detect() -> ChipFamily {
-        var size = 0
-        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
-        var buffer = [CChar](repeating: 0, count: max(size, 1))
-        sysctlbyname("machdep.cpu.brand_string", &buffer, &size, nil, 0)
-        return parse(String(cString: buffer))
+        parse(Sysctl.string("machdep.cpu.brand_string") ?? "")
     }
 
     static func parse(_ brand: String) -> ChipFamily {
@@ -196,11 +204,7 @@ public final class ThermalCollector {
 
         if chip == .other {
             // Unknown chip: walk the SMC key list once and keep every working Tp/Te (CPU), Tg (GPU), Tm (memory) key.
-            let total = Int(lanes_smc_key_count())
-            for i in 0..<total {
-                var raw = [CChar](repeating: 0, count: 5)
-                guard lanes_smc_key_at(Int32(i), &raw) == 1 else { continue }
-                let key = String(cString: raw)
+            for key in SMCKeys.all() {
                 if key.hasPrefix("Tp") || key.hasPrefix("Te") { cpuKeys.append(key) }
                 else if key.hasPrefix("Tg") { gpuKeys.append(key) }
                 else if key.hasPrefix("Tm") { ramKeys.append(key) }
@@ -212,10 +216,7 @@ public final class ThermalCollector {
         cpuKeys = cpuKeys.filter(Self.reads)
         gpuKeys = gpuKeys.filter(Self.reads)
         ramKeys = ramKeys.filter(Self.reads)
-        for (kind, keys) in chip.clusterKeys {
-            let working = keys.filter(Self.reads)
-            if !working.isEmpty { clusterKeys[kind] = working }
-        }
+        clusterKeys = chip.clusterKeys.mapValues { $0.filter(Self.reads) }.filter { !$0.value.isEmpty }
 
         // Fans: the speed limits never change, so read them once.
         var n = 0.0
@@ -236,16 +237,30 @@ public final class ThermalCollector {
 
     private static func plausible(_ c: Double) -> Bool { c > 5 && c < 130 }
 
-    /// Core classes that have a temperature on this Mac.
-    public var clusterKinds: [ClusterKind] { clusterKeys.keys.sorted() }
-
     /// True if the chosen chip's keys matched sensors on this Mac.
     public var foundCPUSensors: Bool { !cpuKeys.isEmpty }
 
     public func snapshot(wanted: ThermalWanted = [.cpu, .gpu, .ram, .ssd, .fan]) -> ThermalSnapshot? {
-        let cpu = wanted.contains(.cpu) ? average(cpuKeys) : nil
-        let gpu = wanted.contains(.gpu) ? average(gpuKeys) : nil
-        let ram = wanted.contains(.ram) ? average(ramKeys) : nil
+        // Each SMC key is read at most once per snapshot even when groups overlap: the CPU average
+        // and the core classes share keys, and the GPU average and GPU sensors are the same keys.
+        var cache: [String: Double] = [:]
+        func readings(_ keys: [String]) -> [Double] {
+            keys.compactMap { key in
+                if let v = cache[key] { return v }
+                var v = 0.0
+                guard lanes_smc_read_float(key, &v) == 1, Self.plausible(v) else { return nil }
+                cache[key] = v
+                return v
+            }
+        }
+        func mean(_ values: [Double]) -> Double? {
+            values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+        }
+
+        let cpu = wanted.contains(.cpu) ? mean(readings(cpuKeys)) : nil
+        let gpuValues = wanted.isDisjoint(with: [.gpu, .gpuSensors]) ? [] : readings(gpuKeys)
+        let gpu = wanted.contains(.gpu) ? mean(gpuValues) : nil
+        let ram = wanted.contains(.ram) ? mean(readings(ramKeys)) : nil
 
         var ssd: Double?
         if wanted.contains(.ssd) {
@@ -265,28 +280,13 @@ public final class ThermalCollector {
 
         var clusters: [ClusterKind: Double] = [:]
         if wanted.contains(.clusters) {
-            for (kind, keys) in clusterKeys { if let c = average(keys) { clusters[kind] = c } }
+            for (kind, keys) in clusterKeys { if let c = mean(readings(keys)) { clusters[kind] = c } }
         }
-        var gpuSensors: [Double] = []
-        if wanted.contains(.gpuSensors) {
-            for key in gpuKeys {
-                var v = 0.0
-                if lanes_smc_read_float(key, &v) == 1, Self.plausible(v) { gpuSensors.append(v) }
-            }
-        }
+        let gpuSensors = wanted.contains(.gpuSensors) ? gpuValues : []
 
         if cpu == nil && gpu == nil && ram == nil && ssd == nil && fans.isEmpty
             && clusters.isEmpty && gpuSensors.isEmpty { return nil }
         return ThermalSnapshot(cpuC: cpu, gpuC: gpu, ramC: ram, ssdC: ssd, fans: fans,
                                clusterC: clusters, gpuSensorsC: gpuSensors)
-    }
-
-    private func average(_ keys: [String]) -> Double? {
-        var sum = 0.0, count = 0.0
-        for key in keys {
-            var v = 0.0
-            if lanes_smc_read_float(key, &v) == 1, Self.plausible(v) { sum += v; count += 1 }
-        }
-        return count > 0 ? sum / count : nil
     }
 }

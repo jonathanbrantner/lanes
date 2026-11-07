@@ -1,27 +1,8 @@
 import Foundation
 import IOKit
-import Darwin
 
-public enum ClusterKind: String, CaseIterable, Comparable {
+public enum ClusterKind {
     case superCore, performance, efficiency
-
-    public var title: String {
-        switch self {
-        case .superCore: "Super"
-        case .performance: "Performance"
-        case .efficiency: "Efficiency"
-        }
-    }
-
-    private var order: Int {
-        switch self {
-        case .superCore: 0
-        case .performance: 1
-        case .efficiency: 2
-        }
-    }
-
-    public static func < (a: ClusterKind, b: ClusterKind) -> Bool { a.order < b.order }
 
     /// Maps macOS's own core class name ("Super", "Performance", "Efficiency").
     static func from(name: String) -> ClusterKind {
@@ -73,14 +54,14 @@ public struct CPUTopology: Equatable {
 
     public static func detect() -> CPUTopology {
         let types = readClusterTypes()
-        let levels = sysctlInt("hw.nperflevels") ?? 0
+        let levels = Sysctl.int("hw.nperflevels") ?? 0
         var names: [String] = []
         for i in 0..<levels {
-            if let n = sysctlString("hw.perflevel\(i).name") { names.append(n) }
+            if let n = Sysctl.string("hw.perflevel\(i).name") { names.append(n) }
         }
         if types.isEmpty {
             // No device tree info: one class with every core.
-            let n = sysctlInt("hw.ncpu") ?? 0
+            let n = Sysctl.int("hw.ncpu") ?? 0
             return CPUTopology(clusters: [CPUCluster(kind: .performance, name: "Cores", cpus: Array(0..<n))])
         }
         return build(types: types, names: names)
@@ -107,19 +88,5 @@ public struct CPUTopology: Equatable {
         }
         guard !byID.isEmpty, let maxID = byID.keys.max() else { return [] }
         return (0...maxID).map { byID[$0] ?? "?" }
-    }
-
-    private static func sysctlInt(_ name: String) -> Int? {
-        var value: Int32 = 0
-        var size = MemoryLayout<Int32>.size
-        return sysctlbyname(name, &value, &size, nil, 0) == 0 ? Int(value) : nil
-    }
-
-    private static func sysctlString(_ name: String) -> String? {
-        var size = 0
-        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
-        var buffer = [CChar](repeating: 0, count: size)
-        guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
-        return String(cString: buffer)
     }
 }

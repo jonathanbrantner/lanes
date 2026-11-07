@@ -35,8 +35,8 @@ struct MonitorState {
 final class Monitor: ObservableObject {
     let settings = Settings()
     @Published private(set) var state = MonitorState()
-    /// Which logical CPU is which kind of core. Read once.
-    let topology = CPUTopology.detect()
+    /// Which logical CPU is which kind of core. Read on first use (when a core view first opens), once.
+    private(set) lazy var topology = CPUTopology.detect()
 
     nonisolated static let historyLength = 60
 
@@ -71,8 +71,7 @@ final class Monitor: ObservableObject {
         sampler?.configure(shown: settings.menuBarItems.union(settings.panelItems),
                           interval: settings.updateInterval, chip: settings.chip,
                           temperatures: settings.showTemperatures,
-                          cpuCores: settings.coreDetails && settings.cpuExpanded,
-                          gpuDetail: settings.coreDetails && settings.gpuExpanded)
+                          cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -126,7 +125,7 @@ private final class Sampler {
     private var cpuCores = false
     private var gpuDetail = false
     private var coreSamples: [[Double]] = []
-    private var lastWanted: ThermalWanted = []
+    private var detailRefresh: DispatchWorkItem?
     private let drives: DriveCollector
     private var timer: DispatchSourceTimer?
 
@@ -142,7 +141,8 @@ private final class Sampler {
 
     func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool,
                    cpuCores: Bool, gpuDetail: Bool) {
-        queue.async {
+        queue.async { [weak self] in
+            guard let self else { return }
             let coresOpened = cpuCores && !self.cpuCores
             let gpuOpened = gpuDetail && !self.gpuDetail
             self.shown = shown
@@ -153,7 +153,10 @@ private final class Sampler {
             // instead of "Waiting for data" for a whole update interval.
             if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
             if coresOpened || gpuOpened {
-                self.queue.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refreshDetail() }
+                self.detailRefresh?.cancel()   // chevron clicked repeatedly: keep only the last
+                let work = DispatchWorkItem { [weak self] in self?.refreshDetail() }
+                self.detailRefresh = work
+                self.queue.asyncAfter(deadline: .now() + 1, execute: work)
             }
             if chip != self.chip { self.chip = chip; self.thermal = nil; self.state.thermal = nil }
             let restart = interval != self.interval || self.timer == nil
@@ -188,10 +191,18 @@ private final class Sampler {
         }
         sampleCores()
         if shown.contains(.gpu) {
-            state.gpu = gpu.utilization()
+            if gpuDetail {
+                // One registry read serves both the overall value and the detail.
+                state.gpuDetail = gpu.details()
+                state.gpu = state.gpuDetail?.device
+            } else {
+                state.gpu = gpu.utilization()
+                state.gpuDetail = nil
+            }
             push(&state.gpuHistory, state.gpu)
+        } else {
+            state.gpuDetail = nil
         }
-        state.gpuDetail = (gpuDetail && shown.contains(.gpu)) ? gpu.details() : nil
         if shown.contains(.power) {
             if tickCount % 2 == 1 { state.power = power.snapshot() }   // heaviest read: every other tick
             push(&state.powerHistory, state.power?.systemWatts)
@@ -226,6 +237,7 @@ private final class Sampler {
     private func refreshDetail() {
         sampleCores()
         state.gpuDetail = (gpuDetail && shown.contains(.gpu)) ? gpu.details() : nil
+        state.thermal = nil   // forces a thermal read now, so the new groups appear with the cores
         sampleThermal()
         onSample?(state)
     }
@@ -234,7 +246,7 @@ private final class Sampler {
     /// overall CPU value. When closed, the baseline is dropped so reopening starts fresh.
     private func sampleCores() {
         guard cpuCores, shown.contains(.cpu) else {
-            if !state.coreUsage.isEmpty || !coreSamples.isEmpty { cpu.resetPerCore() }
+            cpu.resetPerCore()
             state.coreUsage = []
             coreSamples = []
             return
@@ -242,8 +254,8 @@ private final class Sampler {
         if let sample = cpu.perCoreUsage() {
             coreSamples.append(sample)
             if coreSamples.count > displayWindow { coreSamples.removeFirst(coreSamples.count - displayWindow) }
-            state.coreUsage = (0..<sample.count).map { core in
-                coreSamples.reduce(0) { $0 + ($1.count > core ? $1[core] : 0) } / Double(coreSamples.count)
+            state.coreUsage = sample.indices.map { core in
+                coreSamples.reduce(0) { $0 + $1[core] } / Double(coreSamples.count)
             }
         }
     }
@@ -268,10 +280,7 @@ private final class Sampler {
             return
         }
         let every = max(1, Int((3.0 / interval).rounded(.up)))
-        // Read at once when the set of groups changed (a detail view just opened).
-        let changed = wanted != lastWanted
-        lastWanted = wanted
-        guard changed || (tickCount - 1) % every == 0 || state.thermal == nil else { return }
+        guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
         if thermal == nil { thermal = ThermalCollector(chip: chip) }
         state.thermal = thermal?.snapshot(wanted: wanted)
         push(&state.cpuTempHistory, state.thermal?.cpuC)

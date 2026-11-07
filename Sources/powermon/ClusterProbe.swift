@@ -9,13 +9,9 @@ import SystemMonitorCore
 func runClusterProbe(efficiencyOnly: Bool = false) {
     guard lanes_smc_open() == 1 else { print("SMC unavailable"); return }
 
-    var keys: [String] = []
-    for i in 0..<Int(lanes_smc_key_count()) {
-        var raw = [CChar](repeating: 0, count: 5)
-        guard lanes_smc_key_at(Int32(i), &raw) == 1 else { continue }
-        let key = String(cString: raw)
+    let keys = SMCKeys.all().filter { key in
         var v = 0.0
-        if key.hasPrefix("T"), lanes_smc_read_float(key, &v) == 1, v > 5, v < 130 { keys.append(key) }
+        return key.hasPrefix("T") && lanes_smc_read_float(key, &v) == 1 && v > 5 && v < 130
     }
     let topology = CPUTopology.detect()
     print("keys: \(keys.count), clusters: \(topology.clusters.map { "\($0.name)=\($0.cpus)" })")

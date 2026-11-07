@@ -147,10 +147,7 @@ final class CollectorTests: XCTestCase {
 
     func testDetectedTopologyMatchesCoreCount() {
         let t = CPUTopology.detect()
-        var n: Int32 = 0
-        var size = MemoryLayout<Int32>.size
-        sysctlbyname("hw.ncpu", &n, &size, nil, 0)
-        XCTAssertEqual(t.coreCount, Int(n))
+        XCTAssertEqual(t.coreCount, Sysctl.int("hw.ncpu"))
     }
 
     func testPerCoreUsageHasOneValuePerCore() {

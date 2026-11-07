@@ -1,5 +1,6 @@
 import Foundation
 import CPower
+import SystemMonitorCore
 
 // powermon: prototype that prints every power reading this Mac exposes without root.
 // Usage: powermon [--count N]
@@ -39,12 +40,9 @@ if args.contains("--temps") {
         print(String(format: "  HID  %-32@ %7.2f C", name as NSString, sensors[i].celsius))
     }
     print("SMC open:", lanes_smc_open() == 1 ? "ok" : "FAILED")
-    let total = Int(lanes_smc_key_count())
-    print("SMC keys: \(total)")
-    for i in 0..<total {
-        var raw = [CChar](repeating: 0, count: 5)
-        guard lanes_smc_key_at(Int32(i), &raw) == 1 else { continue }
-        let key = String(cString: raw)
+    let allKeys = SMCKeys.all()
+    print("SMC keys: \(allKeys.count)")
+    for key in allKeys {
         guard key.hasPrefix("T") || key.hasPrefix("F") else { continue }
         var v = 0.0
         var type = [CChar](repeating: 0, count: 5)

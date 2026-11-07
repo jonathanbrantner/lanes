@@ -83,6 +83,10 @@ final class Settings: ObservableObject {
     @Published var gpuExpanded: Bool {
         didSet { UserDefaults.standard.set(gpuExpanded, forKey: Self.gpuExpandedKey) }
     }
+    /// The core views are only worth sampling when the switch is on and the box is open.
+    var cpuCoresVisible: Bool { coreDetails && cpuExpanded }
+    var gpuDetailVisible: Bool { coreDetails && gpuExpanded }
+
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {
         didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }

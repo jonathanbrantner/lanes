@@ -302,17 +302,7 @@ struct PanelView: View {
         HStack(spacing: 4) {
             Text("\(index)").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 .frame(width: 14, alignment: .trailing)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 2).fill(color)
-                        .frame(width: geo.size.width * CGFloat(min(max(load ?? 0, 0), 1)))
-                }
-            }
-            .frame(height: 7)
-            Text(load.map { String(format: "%.0f%%", $0 * 100) } ?? "-")
-                .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
-                .frame(width: 28, alignment: .trailing)
+            LoadBar(value: load, color: color)
         }
     }
 
@@ -330,8 +320,8 @@ struct PanelView: View {
             if settings.showTemperatures, let sensors = monitor.thermal?.gpuSensorsC, !sensors.isEmpty {
                 Text("GPU sensors").font(.caption.weight(.semibold)).padding(.top, 2)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 2) {
-                    ForEach(Array(sensors.enumerated()), id: \.offset) { i, c in
-                        Text("S\(i + 1) \(settings.temperature(c, symbol: false))")
+                    ForEach(sensors.indices, id: \.self) { i in
+                        Text("S\(i + 1) \(settings.temperature(sensors[i], symbol: false))")
                             .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -344,16 +334,7 @@ struct PanelView: View {
     private func labeledBar(_ title: String, _ value: Double) -> some View {
         HStack(spacing: 6) {
             Text(title).font(.caption).foregroundStyle(.secondary).frame(width: 56, alignment: .leading)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 2).fill(MonitorItem.gpu.color)
-                        .frame(width: geo.size.width * CGFloat(min(max(value, 0), 1)))
-                }
-            }
-            .frame(height: 7)
-            Text(String(format: "%.0f%%", value * 100)).font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
+            LoadBar(value: value, color: MonitorItem.gpu.color)
         }
     }
 
@@ -418,6 +399,28 @@ struct PanelView: View {
 }
 
 // MARK: - Charts
+
+/// A thin 0...1 bar with its percentage, used for core and GPU loads.
+struct LoadBar: View {
+    let value: Double?
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 2).fill(color)
+                        .frame(width: geo.size.width * CGFloat(min(max(value ?? 0, 0), 1)))
+                }
+            }
+            .frame(height: 7)
+            Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "-")
+                .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .trailing)
+        }
+    }
+}
 
 /// Filled history chart for a 0...1 value over the last 60 seconds.
 struct HistoryChart: View {
