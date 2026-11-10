@@ -17,7 +17,7 @@ and fan speed. Switch between °C and °F in Settings. See [Features](#features)
 
 <p align="center">
   <img src="docs/menubar.png" width="310" alt="Lanes in the menu bar: memory and external drive read/write speed"><br>
-  <img src="docs/panel.png" width="340" alt="The Lanes panel: tiles for CPU, GPU, memory, power, external drives and the internal disk, with average temperature and fan speed underneath"> <img src="docs/panel-cpu.png" width="340" alt="Clicking a tile opens its full chart; the CPU view shows every core grouped by core class">
+  <img src="docs/panel.png" width="340" alt="The Lanes panel: tiles for CPU, GPU, memory, power, external drives and the internal disk, with average temperature and fan speed underneath"> <img src="docs/panel-cpu.png" width="340" alt="The CPU page: one card per core class with its average load and temperature, and a small graph for every core"> <img src="docs/panel-gpu.png" width="340" alt="The GPU page: Device, Renderer and Tiler load, and a graph for each of the GPU temperature sensors">
 </p>
 
 Pictures are rendered by the app from demo data (`scripts/make-screenshots.sh`).

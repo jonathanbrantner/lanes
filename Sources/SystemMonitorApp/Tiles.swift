@@ -54,3 +54,24 @@ struct Tile: View {
         .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
+
+/// A small box for one core or one sensor: its name, its value and its own little graph.
+struct MiniBox: View {
+    let title: String
+    let value: String
+    let history: [Double]
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 2) {
+                Text(title).font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 2)
+                Text(value).font(.system(size: 10, weight: .semibold, design: .monospaced)).lineLimit(1)
+            }
+            HistoryChart(values: history, color: color).frame(height: 22)
+        }
+        .padding(6)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+    }
+}

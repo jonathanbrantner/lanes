@@ -16,6 +16,11 @@ struct MonitorState {
     var thermal: ThermalSnapshot?
     var coreUsage: [Double] = []        // per logical core, 0...1, only while the CPU page is open
     var gpuDetail: GPUDetails?
+    // Short histories, kept only while the CPU or GPU page is open.
+    var coreHistory: [[Double]] = []     // raw load per logical core, 0...1
+    var gpuRendererHistory: [Double] = []
+    var gpuTilerHistory: [Double] = []
+    var gpuSensorHistory: [[Double]] = []   // one series per GPU temperature sensor, degrees C
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
     var cpuHistory: [Double] = []
@@ -81,6 +86,10 @@ final class Monitor: ObservableObject {
     var thermal: ThermalSnapshot? { state.thermal }
     var coreUsage: [Double] { state.coreUsage }
     var gpuDetail: GPUDetails? { state.gpuDetail }
+    var coreHistory: [[Double]] { state.coreHistory }
+    var gpuRendererHistory: [Double] { state.gpuRendererHistory }
+    var gpuTilerHistory: [Double] { state.gpuTilerHistory }
+    var gpuSensorHistory: [[Double]] { state.gpuSensorHistory }
     var ramHistory: [Double] { state.ramHistory }
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
@@ -191,13 +200,15 @@ private final class Sampler {
                 // One registry read serves both the overall value and the detail.
                 state.gpuDetail = gpu.details()
                 state.gpu = state.gpuDetail?.device
+                push(&state.gpuRendererHistory, state.gpuDetail?.renderer)
+                push(&state.gpuTilerHistory, state.gpuDetail?.tiler)
             } else {
                 state.gpu = gpu.utilization()
-                state.gpuDetail = nil
+                clearGPUDetail()
             }
             push(&state.gpuHistory, state.gpu)
         } else {
-            state.gpuDetail = nil
+            clearGPUDetail()
         }
         if shown.contains(.power) {
             if tickCount % 2 == 1 { state.power = power.snapshot() }   // heaviest read: every other tick
@@ -229,6 +240,12 @@ private final class Sampler {
         onSample?(state)
     }
 
+    private func clearGPUDetail() {
+        state.gpuDetail = nil
+        state.gpuRendererHistory = []
+        state.gpuTilerHistory = []
+    }
+
     /// Light refresh used right after a detail view opens: cores, GPU detail and the thermal groups.
     private func refreshDetail() {
         sampleCores()
@@ -244,10 +261,13 @@ private final class Sampler {
         guard cpuCores, shown.contains(.cpu) else {
             cpu.resetPerCore()
             state.coreUsage = []
+            state.coreHistory = []
             coreSamples = []
             return
         }
         if let sample = cpu.perCoreUsage() {
+            if state.coreHistory.count != sample.count { state.coreHistory = Array(repeating: [], count: sample.count) }
+            for core in sample.indices { push(&state.coreHistory[core], sample[core]) }
             coreSamples.append(sample)
             if coreSamples.count > displayWindow { coreSamples.removeFirst(coreSamples.count - displayWindow) }
             state.coreUsage = sample.indices.map { core in
@@ -272,12 +292,22 @@ private final class Sampler {
         guard !wanted.isEmpty else {
             state.thermal = nil
             state.cpuTempHistory = []; state.gpuTempHistory = []; state.ramTempHistory = []
+            state.gpuSensorHistory = []
             return
         }
         let every = max(1, Int((3.0 / interval).rounded(.up)))
         guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
         if thermal == nil { thermal = ThermalCollector(chip: chip) }
         state.thermal = thermal?.snapshot(wanted: wanted)
+        let sensors = state.thermal?.gpuSensorsC ?? []
+        if sensors.isEmpty {
+            state.gpuSensorHistory = []
+        } else {
+            if state.gpuSensorHistory.count != sensors.count {
+                state.gpuSensorHistory = Array(repeating: [], count: sensors.count)
+            }
+            for i in sensors.indices { push(&state.gpuSensorHistory[i], sensors[i]) }
+        }
         push(&state.cpuTempHistory, state.thermal?.cpuC)
         push(&state.gpuTempHistory, state.thermal?.gpuC)
         push(&state.ramTempHistory, state.thermal?.ramC)

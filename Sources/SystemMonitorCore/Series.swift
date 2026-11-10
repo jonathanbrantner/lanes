@@ -11,3 +11,12 @@ public func zoomed(_ values: [Double], minSpan: Double, floor: Double? = nil) ->
     if let floor, bottom < floor { bottom = floor }
     return values.map { ($0 - bottom) / span }
 }
+
+/// The point-by-point average of several equally sampled series, aligned on the latest sample.
+/// Used for a core class's average load over time.
+public func meanSeries(_ series: [[Double]]) -> [Double] {
+    guard let length = series.map(\.count).min(), length > 0 else { return [] }
+    return (0..<length).map { i in
+        series.reduce(0) { $0 + $1[$1.count - length + i] } / Double(series.count)
+    }
+}

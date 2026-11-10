@@ -31,6 +31,8 @@ enum ScreenshotMode {
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel.png")
         monitor.settings.openDetail = .cpu
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-cpu.png")
+        monitor.settings.openDetail = .gpu
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-gpu.png")
     }
 
     private static func renderPanel(_ panel: PanelView, to path: String) {
@@ -67,6 +69,12 @@ enum ScreenshotMode {
                                     gpuSensorsC: [41, 42, 42, 41, 43, 42, 41, 42, 42, 43, 41, 42])
         s.coreUsage = [0.22, 0.18, 0.12, 0.09, 0.07, 0.05, 0.31, 0.24, 0.06, 0.04, 0.03, 0.02]
         s.gpuDetail = GPUDetails(device: 0.06, renderer: 0.05, tiler: 0.02)
+        s.coreHistory = s.coreUsage.enumerated().map { core, load in
+            curve(60) { max(0, min(1, load * (0.5 + 1.0 * abs(sin($0 * (4 + Double(core)) + Double(core)))))) }
+        }
+        s.gpuRendererHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 17)) }
+        s.gpuTilerHistory = curve(60) { 0.01 + 0.03 * max(0, sin($0 * 13 + 1)) }
+        s.gpuSensorHistory = (0..<12).map { i in curve(30) { 41 + 1.5 * sin($0 * 6 + Double(i)) + 0.8 * Double(i % 3) } }
         s.cpuTempHistory = curve(60) { 40 + 6 * abs(sin($0 * 7)) + ($0 > 0.75 ? 10 * sin(($0 - 0.75) * 12) : 0) }
         s.gpuTempHistory = curve(60) { 38 + 3 * abs(sin($0 * 5)) }
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,

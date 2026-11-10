@@ -196,4 +196,17 @@ final class CollectorTests: XCTestCase {
     func testZoomedEmpty() {
         XCTAssertEqual(zoomed([], minSpan: 1), [])
     }
+
+    func testMeanSeriesAveragesPointByPoint() {
+        let mean = meanSeries([[0, 0.2, 0.4], [0.2, 0.4, 0.6]])
+        XCTAssertEqual(mean.count, 3)
+        for (got, want) in zip(mean, [0.1, 0.3, 0.5]) { XCTAssertEqual(got, want, accuracy: 0.0001) }
+    }
+
+    func testMeanSeriesAlignsOnTheLatestSample() {
+        // The shorter series is the one that started later; the average covers only the shared part.
+        XCTAssertEqual(meanSeries([[1, 2, 3, 4], [3, 4]]).count, 2)
+        XCTAssertEqual(meanSeries([[1, 2, 3, 4], [3, 4]]), [3, 4])
+        XCTAssertEqual(meanSeries([]), [])
+    }
 }
