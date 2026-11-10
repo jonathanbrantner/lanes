@@ -20,6 +20,8 @@ struct MonitorState {
     var coreHistory: [[Double]] = []     // raw load per logical core, 0...1
     var gpuRendererHistory: [Double] = []
     var gpuTilerHistory: [Double] = []
+    var gpuPowerHistory: [Double] = []     // watts
+    var gpuMemoryHistory: [Double] = []    // bytes
     var gpuSensorHistory: [[Double]] = []   // one series per GPU temperature sensor, degrees C
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
@@ -86,6 +88,8 @@ final class Monitor: ObservableObject {
     var coreHistory: [[Double]] { state.coreHistory }
     var gpuRendererHistory: [Double] { state.gpuRendererHistory }
     var gpuTilerHistory: [Double] { state.gpuTilerHistory }
+    var gpuPowerHistory: [Double] { state.gpuPowerHistory }
+    var gpuMemoryHistory: [Double] { state.gpuMemoryHistory }
     var gpuSensorHistory: [[Double]] { state.gpuSensorHistory }
     var ramHistory: [Double] { state.ramHistory }
     var cpuHistory: [Double] { state.cpuHistory }
@@ -196,6 +200,8 @@ private final class Sampler {
                 state.gpu = state.gpuDetail?.device
                 push(&state.gpuRendererHistory, state.gpuDetail?.renderer)
                 push(&state.gpuTilerHistory, state.gpuDetail?.tiler)
+                push(&state.gpuPowerHistory, state.power?.gpuWatts)
+                push(&state.gpuMemoryHistory, state.gpuDetail?.memoryBytes)
             } else {
                 state.gpu = gpu.utilization()
                 clearGPUDetail()
@@ -204,10 +210,10 @@ private final class Sampler {
         } else {
             clearGPUDetail()
         }
-        if shown.contains(.power) {
+        if shown.contains(.power) || gpuDetail {   // the GPU page shows GPU power too
             if tickCount % 2 == 1 { state.power = power.snapshot() }   // heaviest read: every other tick
-            push(&state.powerHistory, state.power?.systemWatts)
         }
+        if shown.contains(.power) { push(&state.powerHistory, state.power?.systemWatts) }
         sampleThermal()
 
         let wantsDrives = shown.contains(.drives) || shown.contains(.disk)
@@ -238,6 +244,8 @@ private final class Sampler {
         state.gpuDetail = nil
         state.gpuRendererHistory = []
         state.gpuTilerHistory = []
+        state.gpuPowerHistory = []
+        state.gpuMemoryHistory = []
     }
 
     /// Light refresh used right after a detail view opens: cores, GPU detail and the thermal groups.

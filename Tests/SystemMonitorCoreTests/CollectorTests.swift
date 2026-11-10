@@ -180,7 +180,7 @@ final class CollectorTests: XCTestCase {
     }
 
     func testZoomedUsesTheRecentRangeAndKeepsOrder() {
-        let z = zoomed([0.02, 0.05, 0.40, 0.05], minSpan: 0.15, floor: 0)
+        let z = zoomed([0.02, 0.05, 0.40, 0.05], minSpan: 0.15, floor: 0, headroom: 0)
         XCTAssertEqual(z.min()!, 0, accuracy: 0.001)
         XCTAssertEqual(z.max()!, 1, accuracy: 0.001)
         XCTAssertTrue(z[2] > z[1] && z[1] > z[0])
@@ -209,5 +209,12 @@ final class CollectorTests: XCTestCase {
         let z = zoomed([40, 44], minSpan: 2, padding: 1)             // range 39...45
         XCTAssertEqual(z[0], 1.0 / 6, accuracy: 0.001)
         XCTAssertEqual(z[1], 5.0 / 6, accuracy: 0.001)
+    }
+
+    func testZoomedLeavesTenPercentHeadroomSoSpikesDoNotTouchTheTop() {
+        let z = zoomed([0.1, 0.1, 0.4, 0.1], minSpan: 0.05)          // range 0.1...0.4, headroom 0.03
+        XCTAssertTrue(z.max()! < 0.95, "max \(z.max()!)")           // not pinned to the top
+        XCTAssertTrue(z.min()! > 0.05, "min \(z.min()!)")           // nor to the bottom
+        XCTAssertEqual(z.max()!, (0.4 - 0.07) / 0.36, accuracy: 0.001)   // 0.917: 8% below the top
     }
 }

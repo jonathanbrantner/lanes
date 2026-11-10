@@ -68,10 +68,12 @@ enum ScreenshotMode {
                                     clusterC: [.superCore: 52, .performance: 47, .efficiency: 41],
                                     gpuSensorsC: [41, 42, 42, 41, 43, 42, 41, 42, 42, 43, 41, 42])
         s.coreUsage = [0.22, 0.18, 0.12, 0.09, 0.07, 0.05, 0.31, 0.24, 0.06, 0.04, 0.03, 0.02]
-        s.gpuDetail = GPUDetails(device: 0.06, renderer: 0.05, tiler: 0.02)
+        s.gpuDetail = GPUDetails(device: 0.06, renderer: 0.05, tiler: 0.02, memoryBytes: 236_000_000)
         s.coreHistory = s.coreUsage.enumerated().map { core, load in
             curve(60) { max(0, min(1, load * (0.5 + 1.0 * abs(sin($0 * (4 + Double(core)) + Double(core)))))) }
         }
+        s.gpuPowerHistory = curve(60) { 0.05 + 0.12 * max(0, sin($0 * 15)) }
+        s.gpuMemoryHistory = curve(60) { 200_000_000 + 40_000_000 * sin($0 * 5) }
         s.gpuRendererHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 17)) }
         s.gpuTilerHistory = curve(60) { 0.01 + 0.03 * max(0, sin($0 * 13 + 1)) }
         s.gpuSensorHistory = (0..<12).map { i in curve(30) { 41 + 1.5 * sin($0 * 6 + Double(i)) + 0.8 * Double(i % 3) } }

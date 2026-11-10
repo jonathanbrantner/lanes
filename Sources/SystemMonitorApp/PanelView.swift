@@ -122,10 +122,10 @@ struct PanelView: View {
 
     private func percent(_ value: Double?) -> String { value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a" }
 
-    /// "↓412 ↑186": whole numbers once a speed is 10 MB/s or more.
-    private func rates(_ read: Double, _ write: Double) -> String {
+    /// Whole numbers once a speed is 10 MB/s or more ("412", "0.2").
+    private func rates(_ read: Double, _ write: Double) -> (read: String, write: String) {
         func f(_ v: Double) -> String { String(format: v >= 10 ? "%.0f" : "%.1f", v) }
-        return "↓\(f(read)) ↑\(f(write))"
+        return (f(read), f(write))
     }
 
     /// Read plus write as one number per sample, zoomed like the other tiles.
@@ -170,7 +170,7 @@ struct PanelView: View {
             return TileData(id: item, symbol: item.symbol,
                             name: drives.count == 1 ? first.label : "\(drives.count) drives", color: item.color,
                             big: Monitor.speed(monitor.externalRead + monitor.externalWrite),
-                            small: rates(monitor.externalRead, monitor.externalWrite),
+                            small: "", rates: rates(monitor.externalRead, monitor.externalWrite),
                             corner: nil, history: driveHistory(first))
         case .disk:
             guard let drive = monitor.internalDrive else {
@@ -179,7 +179,7 @@ struct PanelView: View {
             }
             return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
                             big: Monitor.speed(drive.readMBps + drive.writeMBps),
-                            small: rates(drive.readMBps, drive.writeMBps),
+                            small: "", rates: rates(drive.readMBps, drive.writeMBps),
                             corner: shownTemp(monitor.thermal?.ssdC), history: driveHistory(drive))
         case .thermal:
             return nil
@@ -339,6 +339,13 @@ struct PanelView: View {
                 box("Device", d?.device, monitor.gpuHistory)
                 box("Renderer", d?.renderer, monitor.gpuRendererHistory)
                 box("Tiler", d?.tiler, monitor.gpuTilerHistory)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 2), spacing: 5) {
+                MiniBox(title: "Power", value: monitor.power?.gpuWatts.map { String(format: "%.2f W", $0) } ?? "-",
+                        history: zoomed(monitor.gpuPowerHistory, minSpan: 0.5, floor: 0, padding: 0.1), color: .yellow)
+                MiniBox(title: "Memory", value: d?.memoryBytes.map { bytes(UInt64($0)) } ?? "-",
+                        history: zoomed(monitor.gpuMemoryHistory, minSpan: 50_000_000, floor: 0, padding: 10_000_000),
+                        color: .green)
             }
             if settings.showTemperatures, let sensors = monitor.thermal?.gpuSensorsC, !sensors.isEmpty {
                 HStack {

@@ -8,6 +8,8 @@ struct TileData: Identifiable {
     let color: Color
     let big: String
     let small: String
+    /// For drives: read and write speeds, drawn with the menu bar's blue down and orange up arrows.
+    var rates: (read: String, write: String)?
     /// Top right corner: a temperature, or a warning such as memory pressure.
     var corner: String?
     var cornerColor: Color = .red
@@ -45,7 +47,21 @@ struct Tile: View {
             }
             Text(data.big).font(.system(size: 20, weight: .semibold)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
-            Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+            if let rates = data.rates {
+                HStack(spacing: 8) {
+                    HStack(spacing: 2) {
+                        Text("↓").foregroundStyle(Color(nsColor: .systemBlue))
+                        Text(rates.read).foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 2) {
+                        Text("↑").foregroundStyle(Color(nsColor: .systemOrange))
+                        Text(rates.write).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.system(size: 10, weight: .medium)).lineLimit(1)
+            } else {
+                Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+            }
             HistoryChart(values: data.history, color: data.color).frame(height: 28)
         }
         .padding(10)
