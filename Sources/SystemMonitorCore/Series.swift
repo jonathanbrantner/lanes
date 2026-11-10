@@ -1,22 +1,26 @@
 import Foundation
 
-/// Maps a history to 0...1 over its own recent range, so a graph always shows detail: a 5% CPU
-/// line and a steady 68% memory line are not squashed against an absolute 0...100% scale.
-/// `minSpan` keeps tiny wobbles from being blown up into noise: a flat line stays flat, centred.
-/// `floor` stops the range going below a natural minimum (a load or speed cannot be negative).
-public func zoomed(_ values: [Double], minSpan: Double, floor: Double? = nil) -> [Double] {
+/// Maps a history to 0...1 over its own recent range, so a graph always shows detail: a 2% GPU spike
+/// and a steady 68% memory line are not squashed against an absolute 0...100% scale.
+/// - `padding` adds room above the highest and below the lowest value, so the line never touches the edges.
+/// - `minSpan` keeps tiny wobbles from being blown up into noise: a flat line stays flat, centred.
+/// - `floor` stops the range going below a natural minimum (a load or speed cannot be negative).
+public func zoomed(_ values: [Double], minSpan: Double, floor: Double? = nil, padding: Double = 0) -> [Double] {
     guard let hi = values.max(), let lo = values.min() else { return [] }
-    let span = max(hi - lo, minSpan)
-    var bottom = (hi + lo) / 2 - span / 2          // centre the data in the range
+    var bottom = lo - padding
+    var top = hi + padding
     if let floor, bottom < floor { bottom = floor }
-    return values.map { ($0 - bottom) / span }
-}
-
-/// The point-by-point average of several equally sampled series, aligned on the latest sample.
-/// Used for a core class's average load over time.
-public func meanSeries(_ series: [[Double]]) -> [Double] {
-    guard let length = series.map(\.count).min(), length > 0 else { return [] }
-    return (0..<length).map { i in
-        series.reduce(0) { $0 + $1[$1.count - length + i] } / Double(series.count)
+    if top - bottom < minSpan {
+        // Too flat: widen around the middle, but never below the floor (extend upwards instead).
+        let extra = minSpan - (top - bottom)
+        var newBottom = bottom - extra / 2
+        var newTop = top + extra / 2
+        if let floor, newBottom < floor {
+            newTop += floor - newBottom
+            newBottom = floor
+        }
+        bottom = newBottom
+        top = newTop
     }
+    return values.map { ($0 - bottom) / (top - bottom) }
 }

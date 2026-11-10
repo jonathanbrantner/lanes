@@ -26,9 +26,6 @@ struct MonitorState {
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
-    var cpuTempHistory: [Double] = []   // °C, one point per thermal read (about every 3 s)
-    var gpuTempHistory: [Double] = []
-    var ramTempHistory: [Double] = []
     var driveHistory: [String: [DriveSample]] = [:]
 }
 
@@ -94,9 +91,6 @@ final class Monitor: ObservableObject {
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
-    var cpuTempHistory: [Double] { state.cpuTempHistory }
-    var gpuTempHistory: [Double] { state.gpuTempHistory }
-    var ramTempHistory: [Double] { state.ramTempHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
 
     /// External drives that are connected and not switched off in settings.
@@ -291,7 +285,6 @@ private final class Sampler {
         if shown.contains(.thermal) { wanted.formUnion([.cpu, .gpu, .ram, .ssd, .fan]) }   // average + fan
         guard !wanted.isEmpty else {
             state.thermal = nil
-            state.cpuTempHistory = []; state.gpuTempHistory = []; state.ramTempHistory = []
             state.gpuSensorHistory = []
             return
         }
@@ -308,9 +301,6 @@ private final class Sampler {
             }
             for i in sensors.indices { push(&state.gpuSensorHistory[i], sensors[i]) }
         }
-        push(&state.cpuTempHistory, state.thermal?.cpuC)
-        push(&state.gpuTempHistory, state.thermal?.gpuC)
-        push(&state.ramTempHistory, state.thermal?.ramC)
     }
 
     /// Number of ticks that make up Activity Monitor's default 5 second averaging window.

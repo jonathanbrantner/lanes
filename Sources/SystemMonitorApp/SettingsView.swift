@@ -73,7 +73,7 @@ struct SettingsView: View {
                 SettingsRow(title: "Core details") {
                     Toggle("", isOn: $settings.coreDetails).toggleStyle(.checkbox).labelsHidden()
                 }
-                Text("See how busy each CPU core is (open the CPU tile) and the graphics chip's sensors (GPU tile).")
+                Text("A per-core view on the CPU and GPU pages.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).padding(.bottom, 8)
             }

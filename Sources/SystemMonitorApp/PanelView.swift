@@ -131,7 +131,7 @@ struct PanelView: View {
     /// Read plus write as one number per sample, zoomed like the other tiles.
     private func driveHistory(_ drive: DriveRate?) -> [Double] {
         guard let drive, let samples = monitor.driveHistory[drive.bsdName] else { return [] }
-        return zoomed(samples.map { $0.read + $0.write }, minSpan: 1, floor: 0)
+        return zoomed(samples.map { $0.read + $0.write }, minSpan: 1, floor: 0, padding: 0.5)
     }
 
     private func tileData(_ item: MonitorItem) -> TileData? {
@@ -140,13 +140,13 @@ struct PanelView: View {
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: percent(monitor.cpu), small: "\(ProcessInfo.processInfo.activeProcessorCount) cores",
                             corner: shownTemp(monitor.thermal?.cpuC),
-                            history: zoomed(monitor.cpuHistory, minSpan: 0.15, floor: 0))
+                            history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05))
         case .gpu:
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: percent(monitor.gpu),
                             small: monitor.gpuDetail.map { "Renderer \(percent($0.renderer))" } ?? "Graphics",
                             corner: shownTemp(monitor.thermal?.gpuC),
-                            history: zoomed(monitor.gpuHistory, minSpan: 0.15, floor: 0))
+                            history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05))
         case .memory:
             guard let ram = monitor.ram else { return nil }
             let warning = ram.pressure == .normal ? nil : (ram.pressure == .warning ? "Pressure" : "Critical")
@@ -155,12 +155,12 @@ struct PanelView: View {
                             small: "\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes))",
                             corner: shownTemp(monitor.thermal?.ramC) ?? warning,
                             cornerColor: shownTemp(monitor.thermal?.ramC) == nil ? pressureColor(ram.pressure) : .red,
-                            history: zoomed(monitor.ramHistory, minSpan: 0.04, floor: 0))
+                            history: zoomed(monitor.ramHistory, minSpan: 0.03, floor: 0, padding: 0.01))
         case .power:
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: monitor.power?.systemWatts.map { String(format: "%.1f W", $0) } ?? "n/a",
                             small: monitor.power?.gpuWatts.map { String(format: "GPU %.2f W", $0) } ?? "Whole system",
-                            corner: nil, history: zoomed(monitor.powerHistory, minSpan: 3, floor: 0))
+                            corner: nil, history: zoomed(monitor.powerHistory, minSpan: 2, floor: 0, padding: 0.5))
         case .drives:
             let drives = monitor.externalDrives
             guard let first = drives.first else {
@@ -175,7 +175,7 @@ struct PanelView: View {
         case .disk:
             guard let drive = monitor.internalDrive else {
                 return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
-                                big: "-", small: "Waiting for data", corner: nil, history: [])
+                                big: "-", small: "", corner: nil, history: [])
             }
             return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
                             big: Monitor.speed(drive.readMBps + drive.writeMBps),
@@ -202,11 +202,13 @@ struct PanelView: View {
     private func section(for item: MonitorItem) -> some View {
         switch item {
         case .memory: memorySection
-        case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory,
-                                  temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory,
+        case .cpu: percentSection(.cpu, value: monitor.cpu,
+                                  history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
+                                  temp: shownTemp(monitor.thermal?.cpuC),
                                   detail: { if settings.coreDetails { cpuCoresView } })
-        case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
-                                  temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory,
+        case .gpu: percentSection(.gpu, value: monitor.gpu,
+                                  history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
+                                  temp: shownTemp(monitor.thermal?.gpuC),
                                   detail: { if settings.coreDetails { gpuDetailView } })
         default: EmptyView()
         }
@@ -219,15 +221,16 @@ struct PanelView: View {
             HStack {
                 header(.memory)
                 Spacer()
+                if let temp = shownTemp(monitor.thermal?.ramC) { Text(temp).monospacedDigit().foregroundStyle(.red) }
                 if let ram = monitor.ram {
                     Text(pressureLabel(ram.pressure)).foregroundStyle(pressureColor(ram.pressure))
                 }
             }
             if let ram = monitor.ram {
                 Text("\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes)) used")
-                HistoryChart(values: monitor.ramHistory, color: pressureColor(ram.pressure))
+                HistoryChart(values: zoomed(monitor.ramHistory, minSpan: 0.03, floor: 0, padding: 0.01),
+                             color: pressureColor(ram.pressure))
                     .frame(height: 40)
-                tempChart(monitor.ramTempHistory, .red, label: shownTemp(monitor.thermal?.ramC))
                 MemoryBar(ram: ram).frame(height: 8)
                 VStack(spacing: 3) {
                     legend("App Memory", ram.appBytes, .blue)
@@ -261,16 +264,15 @@ struct PanelView: View {
     // MARK: CPU / GPU
 
     private func percentSection<Detail: View>(_ item: MonitorItem, value: Double?, history: [Double],
-                                              temp: String?, tempHistory: [Double],
-                                              @ViewBuilder detail: () -> Detail) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+                                              temp: String?, @ViewBuilder detail: () -> Detail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 header(item)
                 Spacer()
-                Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a").monospacedDigit()
+                if let temp { Text(temp).monospacedDigit().foregroundStyle(.red) }
+                Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "-").monospacedDigit()
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
-            tempChart(tempHistory, .red, label: temp, labelColor: item == .cpu ? .red : .secondary)
             detail()
         }
     }
@@ -310,14 +312,12 @@ struct PanelView: View {
                 if settings.showTemperatures, let c = monitor.thermal?.clusterC[cluster.kind] {
                     Text(settings.temperature(c)).font(.caption).monospacedDigit().foregroundStyle(.red)
                 }
-                Text(percent(average)).font(.system(size: 12, design: .monospaced))
+                Text(average.map { percent($0) } ?? "-").font(.system(size: 12, design: .monospaced))
             }
-            HistoryChart(values: zoomed(meanSeries(histories), minSpan: 0.15, floor: 0), color: color)
-                .frame(height: 26)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: columns), spacing: 5) {
                 ForEach(Array(cluster.cpus.enumerated()), id: \.element) { index, cpu in
                     MiniBox(title: "\(cpu)", value: loads[index].map { percent($0) } ?? "-",
-                            history: zoomed(histories[index], minSpan: 0.25, floor: 0), color: color)
+                            history: zoomed(histories[index], minSpan: 0.07, floor: 0, padding: 0.05), color: color)
                 }
             }
         }
@@ -328,18 +328,17 @@ struct PanelView: View {
     /// macOS reports no per-GPU-core numbers without admin rights, so the boxes are the three loads
     /// it does report and the GPU's individual temperature sensors (sensors, not cores).
     private var gpuDetailView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let d = monitor.gpuDetail {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
-                    MiniBox(title: "Device", value: percent(d.device),
-                            history: zoomed(monitor.gpuHistory, minSpan: 0.1, floor: 0), color: MonitorItem.gpu.color)
-                    MiniBox(title: "Renderer", value: percent(d.renderer),
-                            history: zoomed(monitor.gpuRendererHistory, minSpan: 0.1, floor: 0), color: MonitorItem.gpu.color)
-                    MiniBox(title: "Tiler", value: percent(d.tiler),
-                            history: zoomed(monitor.gpuTilerHistory, minSpan: 0.1, floor: 0), color: MonitorItem.gpu.color)
-                }
-            } else {
-                Text("Waiting for data").font(.caption).foregroundStyle(.secondary)
+        let d = monitor.gpuDetail
+        let color = MonitorItem.gpu.color
+        func box(_ title: String, _ value: Double?, _ history: [Double]) -> some View {
+            MiniBox(title: title, value: value.map { percent($0) } ?? "-",
+                    history: zoomed(history, minSpan: 0.07, floor: 0, padding: 0.05), color: color)
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
+                box("Device", d?.device, monitor.gpuHistory)
+                box("Renderer", d?.renderer, monitor.gpuRendererHistory)
+                box("Tiler", d?.tiler, monitor.gpuTilerHistory)
             }
             if settings.showTemperatures, let sensors = monitor.thermal?.gpuSensorsC, !sensors.isEmpty {
                 HStack {
@@ -351,34 +350,14 @@ struct PanelView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 4), spacing: 5) {
                     ForEach(sensors.indices, id: \.self) { i in
                         MiniBox(title: "S\(i + 1)", value: settings.temperature(sensors[i], symbol: false),
-                                history: zoomed(i < monitor.gpuSensorHistory.count ? monitor.gpuSensorHistory[i] : [], minSpan: 4),
+                                history: zoomed(i < monitor.gpuSensorHistory.count ? monitor.gpuSensorHistory[i] : [],
+                                                minSpan: 4, padding: 1),
                                 color: .red)
                     }
                 }
             }
         }
         .padding(.top, 2)
-    }
-
-    /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
-    /// so small changes show up, and hides itself until there are a few readings.
-    @ViewBuilder
-    private func tempChart(_ history: [Double], _ color: Color, label: String? = nil,
-                           labelColor: Color = .secondary) -> some View {
-        if settings.showTemperatures, label != nil || history.count > 2 {
-            HStack(spacing: 4) {
-                if let label {
-                    Text(label).font(.caption).monospacedDigit().foregroundStyle(labelColor)
-                        .frame(width: 42, alignment: .leading)
-                }
-                Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
-                if history.count > 2 {
-                    HistoryChart(values: zoomed(history, minSpan: 10), color: color).frame(height: 14)
-                } else {
-                    Spacer(minLength: 0)
-                }
-            }
-        }
     }
 
     /// The temperature text for a section header, or nil when temperatures are off or unavailable.

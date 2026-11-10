@@ -197,16 +197,17 @@ final class CollectorTests: XCTestCase {
         XCTAssertEqual(zoomed([], minSpan: 1), [])
     }
 
-    func testMeanSeriesAveragesPointByPoint() {
-        let mean = meanSeries([[0, 0.2, 0.4], [0.2, 0.4, 0.6]])
-        XCTAssertEqual(mean.count, 3)
-        for (got, want) in zip(mean, [0.1, 0.3, 0.5]) { XCTAssertEqual(got, want, accuracy: 0.0001) }
+    func testZoomedPaddingGivesRoomAroundTheData() {
+        // A GPU that never goes above 2%: with 5 points of padding the line is not squashed into the
+        // bottom of a 0...100% scale, and not pinned to the top either.
+        let z = zoomed([0, 0.01, 0.02, 0.01], minSpan: 0.07, floor: 0, padding: 0.05)
+        XCTAssertEqual(z.min()!, 0, accuracy: 0.001)               // floor holds
+        XCTAssertTrue(z.max()! > 0.2 && z.max()! < 0.5, "max \(z.max()!)")
     }
 
-    func testMeanSeriesAlignsOnTheLatestSample() {
-        // The shorter series is the one that started later; the average covers only the shared part.
-        XCTAssertEqual(meanSeries([[1, 2, 3, 4], [3, 4]]).count, 2)
-        XCTAssertEqual(meanSeries([[1, 2, 3, 4], [3, 4]]), [3, 4])
-        XCTAssertEqual(meanSeries([]), [])
+    func testZoomedPaddingBelowAndAboveWithoutFloor() {
+        let z = zoomed([40, 44], minSpan: 2, padding: 1)             // range 39...45
+        XCTAssertEqual(z[0], 1.0 / 6, accuracy: 0.001)
+        XCTAssertEqual(z[1], 5.0 / 6, accuracy: 0.001)
     }
 }
