@@ -5,19 +5,19 @@
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-lightgrey)
 ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
 
-A tiny macOS menu bar monitor for memory and external SSD speed.
+A tiny macOS menu bar monitor for memory, CPU, GPU, temperatures and external SSD speed.
+
+**Version 2.0: a new interface.** The panel is now a grid of tiles with a small graph each, the CPU,
+GPU and Memory tiles open into full pages, and Lanes can show temperatures, fan speed and the load
+of every CPU core. Settings is simpler too. See the [changelog](CHANGELOG.md#200-unreleased-new-interface).
 
 Lanes shows how much memory is in use and how fast your external drives are reading and
-writing, right in the menu bar. Click it for a panel of tiles, one per item; click a tile for its full chart. It uses about 14 MB of
-memory and 0.2% CPU while idle.
-
-**New: temperatures are now available.** Lanes can show CPU, GPU and SSD temperatures (and memory
-on chips that have a memory sensor) right inside each panel section, plus an average temperature
-and fan speed. Switch between °C and °F in Settings. See [Features](#features).
+writing, right in the menu bar. Click it for a panel of tiles, one per item; click the CPU, GPU or
+Memory tile for its full page. It uses about 14 MB of memory and under 1% CPU while idle.
 
 <p align="center">
   <img src="docs/menubar.png" width="310" alt="Lanes in the menu bar: memory and external drive read/write speed"><br>
-  <img src="docs/panel.png" width="340" alt="The Lanes panel: tiles for CPU, GPU, memory, power, external drives and the internal disk, with average temperature and fan speed underneath"> <img src="docs/panel-cpu.png" width="340" alt="The CPU page: one card per core class with its average load and temperature, and a small graph for every core"> <img src="docs/panel-gpu.png" width="340" alt="The GPU page: Device, Renderer and Tiler load, and a graph for each of the GPU temperature sensors">
+  <img src="docs/panel.png" width="340" alt="The Lanes panel: tiles for CPU, GPU, memory, power, external drives and the internal disk, with average temperature and fan speed underneath"> <img src="docs/panel-cpu.png" width="340" alt="The CPU page: one card per core class with its temperature, and a small graph for every core"> <img src="docs/panel-gpu.png" width="340" alt="The GPU page: Device, Renderer and Tiler load, and a graph for each of the GPU temperature sensors">
 </p>
 
 Pictures are rendered by the app from demo data (`scripts/make-screenshots.sh`).
@@ -31,14 +31,14 @@ separate read and write speeds, and stays out of the way.
 ## Features
 
 - External drives by volume name ("Work SSD", not "M.2 P320 512GB"), with read and write
-  MB/s and a 60 second chart per drive. Drives appear and disappear as you plug them in.
+  MB/s and a small graph. Drives appear and disappear as you plug them in.
 - Memory as Activity Monitor counts it (app, wired, compressed), with the menu bar value
   turning amber or red when macOS reports memory pressure. Cached files and swap listed.
 - Optional: internal disk I/O, whole-system power in watts, CPU and GPU usage, and
   temperatures (CPU, GPU, SSD) in °C or °F, with fan speed on Macs that have a fan.
-- Optional core details: the load of every CPU core, grouped as Super, Performance and Efficiency
-  cores, with one temperature per group, and the GPU's Renderer and Tiler load with its separate
-  temperature sensors. macOS does not report per-core temperatures or per-GPU-core load, so Lanes
+- Optional core details: the load of every CPU core with its own graph, grouped as Super,
+  Performance and Efficiency cores with one temperature per group, and the GPU's Renderer and
+  Tiler load, power, memory and separate temperature sensors. macOS does not report per-core temperatures or per-GPU-core load, so Lanes
   shows what it does report and never guesses.
 - Settings for what shows in the menu bar and in the panel, the update interval
   (1, 2 or 5 seconds), and start at login.
