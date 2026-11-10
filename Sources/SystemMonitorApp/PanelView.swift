@@ -32,10 +32,13 @@ struct PanelView: View {
     @ObservedObject private var settings: Settings
     @StateObject private var loginItem = LoginItem()
     @State private var showSettings = false
+    /// The item whose full section is open (opened by clicking its tile); nil = the tile overview.
+    @State private var detail: MonitorItem?
 
-    init(monitor: Monitor) {
+    init(monitor: Monitor, detail: MonitorItem? = nil) {
         self.monitor = monitor
         self.settings = monitor.settings
+        _detail = State(initialValue: detail)
     }
 
     var body: some View {
@@ -44,6 +47,8 @@ struct PanelView: View {
                 SettingsView(monitor: monitor, settings: settings, loginItem: loginItem) {
                     showSettings = false
                 }
+            } else if let item = detail {
+                detailPage(item)
             } else {
                 mainPanel
             }
@@ -55,23 +60,128 @@ struct PanelView: View {
 
     // MARK: Main panel
 
+    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .power, .drives, .disk]
+
     private var mainPanel: some View {
-        let sections = visibleSections
-        return VStack(alignment: .leading, spacing: 12) {
-            if sections.isEmpty {
+        let visible = visibleSections
+        let tiles = Self.tileOrder.filter(visible.contains)
+        return VStack(alignment: .leading, spacing: 10) {
+            if visible.isEmpty {
                 Text("Nothing selected. Open Settings to choose what to show.")
                     .foregroundStyle(.secondary)
             }
-            ForEach(Array(sections.enumerated()), id: \.element) { index, item in
-                if index > 0 { Divider() }
-                section(for: item)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                ForEach(tiles, id: \.self) { item in
+                    if let data = tileData(item) { Tile(data: data) { detail = item } }
+                }
             }
-            Divider()
+            if visible.contains(.thermal) { thermalStrip }
             HStack {
                 Button("Settings") { showSettings = true }
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
+            .padding(.top, 2)
+        }
+    }
+
+    /// One item's full section (the chart, legend, cores ...), reached from its tile.
+    private func detailPage(_ item: MonitorItem) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { detail = nil } label: { Label("Back", systemImage: "chevron.left") }
+                .buttonStyle(.borderless)
+            section(for: item)
+        }
+    }
+
+    /// Average temperature and fan speed as one line under the tiles.
+    private var thermalStrip: some View {
+        Button { detail = .thermal } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "thermometer.medium").foregroundStyle(MonitorItem.thermal.color)
+                if let avg = monitor.thermal?.averageC {
+                    Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
+                }
+                if let fan = monitor.thermal?.fans.first {
+                    Text("·").foregroundStyle(.secondary)
+                    Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Tiles
+
+    private func percent(_ value: Double?) -> String { value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a" }
+
+    /// "↓412 ↑186": whole numbers once a speed is 10 MB/s or more.
+    private func rates(_ read: Double, _ write: Double) -> String {
+        func f(_ v: Double) -> String { String(format: v >= 10 ? "%.0f" : "%.1f", v) }
+        return "↓\(f(read)) ↑\(f(write))"
+    }
+
+    /// Read plus write as one number, graphed against the busiest moment in the window.
+    private func driveHistory(_ drive: DriveRate?) -> [Double] {
+        guard let drive, let samples = monitor.driveHistory[drive.bsdName] else { return [] }
+        let totals = samples.map { $0.read + $0.write }
+        let peak = max(1, totals.max() ?? 1)
+        return totals.map { $0 / peak }
+    }
+
+    private func tileData(_ item: MonitorItem) -> TileData? {
+        switch item {
+        case .cpu:
+            return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
+                            big: percent(monitor.cpu), small: "\(ProcessInfo.processInfo.activeProcessorCount) cores",
+                            corner: shownTemp(monitor.thermal?.cpuC), history: monitor.cpuHistory)
+        case .gpu:
+            return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
+                            big: percent(monitor.gpu),
+                            small: monitor.gpuDetail.map { "Renderer \(percent($0.renderer))" } ?? "Graphics",
+                            corner: shownTemp(monitor.thermal?.gpuC), history: monitor.gpuHistory)
+        case .memory:
+            guard let ram = monitor.ram else { return nil }
+            let warning = ram.pressure == .normal ? nil : (ram.pressure == .warning ? "Pressure" : "Critical")
+            return TileData(id: item, symbol: item.symbol, name: item.title, color: pressureColor(ram.pressure),
+                            big: percent(ram.usedFraction),
+                            small: "\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes))",
+                            corner: shownTemp(monitor.thermal?.ramC) ?? warning,
+                            cornerColor: shownTemp(monitor.thermal?.ramC) == nil ? pressureColor(ram.pressure) : .red,
+                            history: monitor.ramHistory)
+        case .power:
+            let peak = max(15, monitor.powerHistory.max() ?? 15)
+            return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
+                            big: monitor.power?.systemWatts.map { String(format: "%.1f W", $0) } ?? "n/a",
+                            small: monitor.power?.gpuWatts.map { String(format: "GPU %.2f W", $0) } ?? "Whole system",
+                            corner: nil, history: monitor.powerHistory.map { $0 / peak })
+        case .drives:
+            let drives = monitor.externalDrives
+            guard let first = drives.first else {
+                return TileData(id: item, symbol: item.symbol, name: "Drives", color: item.color,
+                                big: "-", small: "No external drive", corner: nil, history: [])
+            }
+            return TileData(id: item, symbol: item.symbol,
+                            name: drives.count == 1 ? first.label : "\(drives.count) drives", color: item.color,
+                            big: Monitor.speed(monitor.externalRead + monitor.externalWrite),
+                            small: rates(monitor.externalRead, monitor.externalWrite),
+                            corner: nil, history: driveHistory(first))
+        case .disk:
+            guard let drive = monitor.internalDrive else {
+                return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
+                                big: "-", small: "Waiting for data", corner: nil, history: [])
+            }
+            return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
+                            big: Monitor.speed(drive.readMBps + drive.writeMBps),
+                            small: rates(drive.readMBps, drive.writeMBps),
+                            corner: shownTemp(monitor.thermal?.ssdC), history: driveHistory(drive))
+        case .thermal:
+            return nil
         }
     }
 

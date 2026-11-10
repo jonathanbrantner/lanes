@@ -29,8 +29,13 @@ enum ScreenshotMode {
         }
         write(strip, scale: 2, to: "\(outputDir)/menubar.png")
 
-        // Panel: the real SwiftUI view on a rounded dark card, like the popover.
-        let card = PanelView(monitor: monitor)
+        // Panels: the real SwiftUI views on a rounded dark card, like the popover.
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel.png")
+        renderPanel(PanelView(monitor: monitor, detail: .cpu), to: "\(outputDir)/panel-cpu.png")
+    }
+
+    private static func renderPanel(_ panel: PanelView, to path: String) {
+        let card = panel
             .background(Color(nsColor: NSColor(calibratedRed: 0.13, green: 0.13, blue: 0.16, alpha: 1)))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(12)
@@ -39,7 +44,7 @@ enum ScreenshotMode {
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         host.layoutSubtreeIfNeeded()
-        write(view: host, scale: 2, to: "\(outputDir)/panel.png")
+        write(view: host, scale: 2, to: path)
     }
 
     private static func demoState() -> MonitorState {

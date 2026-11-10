@@ -8,7 +8,7 @@
 A tiny macOS menu bar monitor for memory and external SSD speed.
 
 Lanes shows how much memory is in use and how fast your external drives are reading and
-writing, right in the menu bar. Click it for a panel with charts. It uses about 14 MB of
+writing, right in the menu bar. Click it for a panel of tiles, one per item; click a tile for its full chart. It uses about 14 MB of
 memory and 0.2% CPU while idle.
 
 **New: temperatures are now available.** Lanes can show CPU, GPU and SSD temperatures (and memory
@@ -17,7 +17,7 @@ and fan speed. Switch between °C and °F in Settings. See [Features](#features)
 
 <p align="center">
   <img src="docs/menubar.png" width="310" alt="Lanes in the menu bar: memory and external drive read/write speed"><br>
-  <img src="docs/panel.png" width="340" alt="The Lanes panel: memory, external drives, internal disk, power, CPU and GPU">
+  <img src="docs/panel.png" width="340" alt="The Lanes panel: tiles for CPU, GPU, memory, power, external drives and the internal disk, with average temperature and fan speed underneath"> <img src="docs/panel-cpu.png" width="340" alt="Clicking a tile opens its full chart; the CPU view shows every core grouped by core class">
 </p>
 
 Pictures are rendered by the app from demo data (`scripts/make-screenshots.sh`).
