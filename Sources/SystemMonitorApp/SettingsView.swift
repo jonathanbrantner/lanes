@@ -58,29 +58,34 @@ struct SettingsView: View {
             }
 
             Divider()
-            Picker("Update every", selection: $settings.updateInterval) {
-                ForEach(Settings.intervals, id: \.self) { s in
-                    Text(s == 1 ? "1 second" : "\(Int(s)) seconds").tag(s)
-                }
-            }
-            .pickerStyle(.menu)
-
-            HStack {
-                Toggle("Show temperatures", isOn: $settings.showTemperatures).toggleStyle(.switch)
-                Spacer()
-                if usesTemperature {
-                    Picker("", selection: $settings.useFahrenheit) {
-                        Text("°C").tag(false)
-                        Text("°F").tag(true)
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+                GridRow {
+                    Text("Update every")
+                    Picker("", selection: $settings.updateInterval) {
+                        ForEach(Settings.intervals, id: \.self) { Text("\(Int($0)) s").tag($0) }
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
+                GridRow {
+                    Text("Temperatures")
+                    Picker("", selection: temperatureMode) {
+                        Text("Off").tag(0)
+                        Text("°C").tag(1)
+                        Text("°F").tag(2)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                GridRow {
+                    Text("Core details")
+                    Toggle("", isOn: $settings.coreDetails).toggleStyle(.checkbox).labelsHidden()
+                        .help("Adds a chevron to the CPU and GPU boxes to show every core")
+                }
+                GridRow {
+                    Text("Start at login")
+                    Toggle("", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
+                        .toggleStyle(.checkbox).labelsHidden()
+                }
             }
-            Toggle("Core details", isOn: $settings.coreDetails).toggleStyle(.switch)
-                .help("Adds a chevron to the CPU and GPU boxes to show every core")
-
-            Toggle("Start at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
-                .toggleStyle(.switch)
             if loginItem.needsApproval {
                 Text("macOS needs your approval first.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -103,9 +108,14 @@ struct SettingsView: View {
         }
     }
 
-    /// The °C/°F choice matters whenever a temperature is shown anywhere.
-    private var usesTemperature: Bool {
-        settings.showTemperatures || settings.menuBarItems.contains(.thermal) || settings.panelItems.contains(.thermal)
+    /// One control for "show temperatures" and the unit: 0 = off, 1 = °C, 2 = °F.
+    private var temperatureMode: Binding<Int> {
+        Binding(
+            get: { settings.showTemperatures ? (settings.useFahrenheit ? 2 : 1) : 0 },
+            set: { mode in
+                settings.showTemperatures = mode != 0
+                if mode != 0 { settings.useFahrenheit = mode == 2 }
+            })
     }
 
     // MARK: More page
