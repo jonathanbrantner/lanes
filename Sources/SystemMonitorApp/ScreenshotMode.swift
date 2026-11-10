@@ -16,8 +16,6 @@ enum ScreenshotMode {
         monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu]
         monitor.settings.hiddenDrives = []
         monitor.settings.coreDetails = true
-        monitor.settings.cpuExpanded = true
-        monitor.settings.gpuExpanded = true
 
         // Menu bar strip: the icon on a dark menu-bar-like background.
         let icon = IconRenderer.image(cells: monitor.iconCells())
@@ -31,7 +29,8 @@ enum ScreenshotMode {
 
         // Panels: the real SwiftUI views on a rounded dark card, like the popover.
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel.png")
-        renderPanel(PanelView(monitor: monitor, detail: .cpu), to: "\(outputDir)/panel-cpu.png")
+        monitor.settings.openDetail = .cpu
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-cpu.png")
     }
 
     private static func renderPanel(_ panel: PanelView, to path: String) {

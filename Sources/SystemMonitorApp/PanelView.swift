@@ -32,13 +32,16 @@ struct PanelView: View {
     @ObservedObject private var settings: Settings
     @StateObject private var loginItem = LoginItem()
     @State private var showSettings = false
-    /// The item whose full section is open (opened by clicking its tile); nil = the tile overview.
-    @State private var detail: MonitorItem?
+    /// The item whose full page is open (opened by clicking its tile); nil = the tile overview.
+    /// Kept in Settings so the sampler knows when a core view is on screen.
+    private var detail: MonitorItem? {
+        get { settings.openDetail }
+        nonmutating set { settings.openDetail = newValue }
+    }
 
-    init(monitor: Monitor, detail: MonitorItem? = nil) {
+    init(monitor: Monitor) {
         self.monitor = monitor
         self.settings = monitor.settings
-        _detail = State(initialValue: detail)
     }
 
     var body: some View {
@@ -126,12 +129,10 @@ struct PanelView: View {
         return "↓\(f(read)) ↑\(f(write))"
     }
 
-    /// Read plus write as one number, graphed against the busiest moment in the window.
+    /// Read plus write as one number per sample, zoomed like the other tiles.
     private func driveHistory(_ drive: DriveRate?) -> [Double] {
         guard let drive, let samples = monitor.driveHistory[drive.bsdName] else { return [] }
-        let totals = samples.map { $0.read + $0.write }
-        let peak = max(1, totals.max() ?? 1)
-        return totals.map { $0 / peak }
+        return zoomed(samples.map { $0.read + $0.write }, minSpan: 1, floor: 0)
     }
 
     private func tileData(_ item: MonitorItem) -> TileData? {
@@ -139,12 +140,14 @@ struct PanelView: View {
         case .cpu:
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: percent(monitor.cpu), small: "\(ProcessInfo.processInfo.activeProcessorCount) cores",
-                            corner: shownTemp(monitor.thermal?.cpuC), history: monitor.cpuHistory)
+                            corner: shownTemp(monitor.thermal?.cpuC),
+                            history: zoomed(monitor.cpuHistory, minSpan: 0.15, floor: 0))
         case .gpu:
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: percent(monitor.gpu),
                             small: monitor.gpuDetail.map { "Renderer \(percent($0.renderer))" } ?? "Graphics",
-                            corner: shownTemp(monitor.thermal?.gpuC), history: monitor.gpuHistory)
+                            corner: shownTemp(monitor.thermal?.gpuC),
+                            history: zoomed(monitor.gpuHistory, minSpan: 0.15, floor: 0))
         case .memory:
             guard let ram = monitor.ram else { return nil }
             let warning = ram.pressure == .normal ? nil : (ram.pressure == .warning ? "Pressure" : "Critical")
@@ -153,13 +156,12 @@ struct PanelView: View {
                             small: "\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes))",
                             corner: shownTemp(monitor.thermal?.ramC) ?? warning,
                             cornerColor: shownTemp(monitor.thermal?.ramC) == nil ? pressureColor(ram.pressure) : .red,
-                            history: monitor.ramHistory)
+                            history: zoomed(monitor.ramHistory, minSpan: 0.04, floor: 0))
         case .power:
-            let peak = max(15, monitor.powerHistory.max() ?? 15)
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: monitor.power?.systemWatts.map { String(format: "%.1f W", $0) } ?? "n/a",
                             small: monitor.power?.gpuWatts.map { String(format: "GPU %.2f W", $0) } ?? "Whole system",
-                            corner: nil, history: monitor.powerHistory.map { $0 / peak })
+                            corner: nil, history: zoomed(monitor.powerHistory, minSpan: 3, floor: 0))
         case .drives:
             let drives = monitor.externalDrives
             guard let first = drives.first else {
@@ -205,10 +207,10 @@ struct PanelView: View {
         case .disk: diskSection
         case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory,
                                   temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory,
-                                  expanded: settings.coreDetails ? $settings.cpuExpanded : nil) { cpuCoresView }
+                                  detail: { if settings.coreDetails { cpuCoresView } })
         case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
                                   temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory,
-                                  expanded: settings.coreDetails ? $settings.gpuExpanded : nil) { gpuDetailView }
+                                  detail: { if settings.coreDetails { gpuDetailView } })
         case .power: powerSection
         case .thermal: thermalSection
         }
@@ -355,26 +357,16 @@ struct PanelView: View {
 
     private func percentSection<Detail: View>(_ item: MonitorItem, value: Double?, history: [Double],
                                               temp: String?, tempHistory: [Double],
-                                              expanded: Binding<Bool>? = nil,
                                               @ViewBuilder detail: () -> Detail) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 header(item)
-                if let expanded {
-                    Button { withAnimation(.easeInOut(duration: 0.15)) { expanded.wrappedValue.toggle() } } label: {
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                            .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
-                            .foregroundStyle(.secondary).frame(width: 18, height: 18).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(expanded.wrappedValue ? "Hide cores" : "Show cores")
-                }
                 Spacer()
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a").monospacedDigit()
             }
             HistoryChart(values: history, color: item.color).frame(height: 36)
             tempChart(tempHistory, .red, label: temp, labelColor: item == .cpu ? .red : .secondary)
-            if let expanded, expanded.wrappedValue { detail() }
+            detail()
         }
     }
 
@@ -461,9 +453,8 @@ struct PanelView: View {
                         .frame(width: 42, alignment: .leading)
                 }
                 Image(systemName: "thermometer.medium").font(.system(size: 10)).foregroundStyle(color).frame(width: 12)
-                if history.count > 2, let lo = history.min(), let hi = history.max() {
-                    let span = max(hi - lo, 10)
-                    HistoryChart(values: history.map { ($0 - lo) / span }, color: color).frame(height: 14)
+                if history.count > 2 {
+                    HistoryChart(values: zoomed(history, minSpan: 10), color: color).frame(height: 14)
                 } else {
                     Spacer(minLength: 0)
                 }

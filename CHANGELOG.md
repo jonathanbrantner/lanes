@@ -2,9 +2,10 @@
 
 ## 0.4.0 (unreleased)
 
+- Tile graphs zoom to their own recent range, so they always show detail.
 - The panel is now a grid of tiles (big number, caption, small graph, temperature). Click a tile for its full chart, cores or legend. About half the height of the old panel.
 - Settings: Update every and Temperatures (Off, °C, °F) are single segmented controls; chip choice and definitions moved to their own page.
-- Core details (Settings, off by default): expand the CPU box to see every core's load grouped by core class with a temperature per class, and the GPU box for Renderer/Tiler load and the GPU's temperature sensors. Per-cluster temperatures are checked on the M6 only.
+- Core details (Settings, off by default): the CPU page shows every core's load grouped by core class with a temperature per class, and the GPU page shows Renderer/Tiler load and the GPU's temperature sensors. Per-cluster temperatures are checked on the M6 only.
 - `powermon --cluster-probe` finds which temperature sensors belong to which core class by loading one class at a time.
 - **Temperatures are now available.** CPU, GPU, SSD (and memory where the chip has a sensor) in each panel section with a small graph, plus an "Avg temp & fan" item. Definitions of the memory terms added to Settings.
 - Optional Temperature item: CPU, GPU and SSD temperature plus fan speed, read without admin rights. Hidden when a Mac does not expose the sensors.

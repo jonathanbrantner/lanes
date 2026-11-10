@@ -35,7 +35,7 @@ struct Tile: View {
                 Text(data.big).font(.system(size: 20, weight: .semibold)).monospacedDigit()
                     .lineLimit(1).minimumScaleFactor(0.7)
                 Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
-                HistoryChart(values: data.history, color: data.color).frame(height: 22)
+                HistoryChart(values: data.history, color: data.color).frame(height: 28)
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)

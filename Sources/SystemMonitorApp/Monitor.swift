@@ -14,7 +14,7 @@ struct MonitorState {
     var gpu: Double?
     var power: PowerSnapshot?
     var thermal: ThermalSnapshot?
-    var coreUsage: [Double] = []        // per logical core, 0...1, only while the CPU box is expanded
+    var coreUsage: [Double] = []        // per logical core, 0...1, only while the CPU page is open
     var gpuDetail: GPUDetails?
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
@@ -153,7 +153,7 @@ private final class Sampler {
             // instead of "Waiting for data" for a whole update interval.
             if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
             if coresOpened || gpuOpened {
-                self.detailRefresh?.cancel()   // chevron clicked repeatedly: keep only the last
+                self.detailRefresh?.cancel()   // pages opened quickly one after another: keep only the last
                 let work = DispatchWorkItem { [weak self] in self?.refreshDetail() }
                 self.detailRefresh = work
                 self.queue.asyncAfter(deadline: .now() + 1, execute: work)
@@ -242,7 +242,7 @@ private final class Sampler {
         onSample?(state)
     }
 
-    /// Per-core load, only while the CPU box is expanded; averaged over the same 5 s window as the
+    /// Per-core load, only while the CPU page is open; averaged over the same 5 s window as the
     /// overall CPU value. When closed, the baseline is dropped so reopening starts fresh.
     private func sampleCores() {
         guard cpuCores, shown.contains(.cpu) else {

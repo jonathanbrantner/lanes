@@ -78,7 +78,7 @@ struct SettingsView: View {
                 GridRow {
                     Text("Core details")
                     Toggle("", isOn: $settings.coreDetails).toggleStyle(.checkbox).labelsHidden()
-                        .help("Adds a chevron to the CPU and GPU boxes to show every core")
+                        .help("Shows every core on the CPU page and the sensors on the GPU page")
                 }
                 GridRow {
                     Text("Start at login")
@@ -146,7 +146,7 @@ struct SettingsView: View {
                 definition("Swap used", "Memory moved to the SSD because RAM is full. A lot of swap makes the Mac slower.", nil)
                 definition("Pressure", "How hard macOS works to find free memory. \"Under pressure\" means heavy compressing or swapping.", nil)
                 definition("CPU / GPU temp", "Average of that chip's sensors. Memory temperature only appears on chips that have a memory sensor.", .red)
-                definition("Core details", "Load of each CPU core, grouped as Super, Performance and Efficiency cores, with one temperature per group. Open or close it with the chevron on the CPU and GPU boxes.", .indigo)
+                definition("Core details", "Load of each CPU core, grouped as Super, Performance and Efficiency cores, with one temperature per group. It appears on the CPU page (click the CPU tile).", .indigo)
                 definition("GPU sensors", "macOS gives no per-GPU-core numbers, so Renderer and Tiler load are shown, plus the GPU's separate temperature sensors (S1, S2 ...). Sensors are not cores.", .purple)
                 definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
                 definition("Fan", "Current fan speed in revolutions per minute.", nil)
