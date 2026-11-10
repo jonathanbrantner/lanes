@@ -116,7 +116,10 @@ public final class RAMCollector {
                            totalBytes: total,
                            swapUsedBytes: swapUsed,
                            pressure: pressure,
-                           freeBytes: UInt64(stats.free_count) * page,
+                           // The kernel's free_count includes speculative (read-ahead) pages; vm_stat's
+                           // "Pages free" does not. Speculative pages are counted as used, as documented
+                           // above, so they must not also be subtracted as free.
+                           freeBytes: UInt64(max(0, Int64(stats.free_count) - Int64(stats.speculative_count))) * page,
                            fileBackedBytes: UInt64(stats.external_page_count) * page)
     }
 }

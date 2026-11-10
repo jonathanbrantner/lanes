@@ -83,5 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         popover.contentViewController = nil   // frees the SwiftUI view tree
+        monitor.settings.openDetail = nil     // next time the panel opens on the tiles; stops core sampling
     }
 }

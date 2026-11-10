@@ -7,11 +7,14 @@ public struct GPUDetails: Equatable {
     public let device: Double
     public let renderer: Double
     public let tiler: Double
+    /// Memory the GPU is using, in bytes (shared with the CPU on Apple Silicon). nil if not reported.
+    public let memoryBytes: Double?
 
-    public init(device: Double, renderer: Double, tiler: Double) {
+    public init(device: Double, renderer: Double, tiler: Double, memoryBytes: Double? = nil) {
         self.device = device
         self.renderer = renderer
         self.tiler = tiler
+        self.memoryBytes = memoryBytes
     }
 }
 
@@ -62,7 +65,8 @@ public final class GPUCollector {
             else { continue }
             return GPUDetails(device: device,
                               renderer: Self.fraction(stats, "Renderer Utilization %") ?? 0,
-                              tiler: Self.fraction(stats, "Tiler Utilization %") ?? 0)
+                              tiler: Self.fraction(stats, "Tiler Utilization %") ?? 0,
+                              memoryBytes: (stats["In use system memory"] as? NSNumber)?.doubleValue)
         }
         return nil
     }

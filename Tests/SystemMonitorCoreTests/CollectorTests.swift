@@ -170,4 +170,51 @@ final class CollectorTests: XCTestCase {
         for (_, c) in t.clusterC { XCTAssertTrue(c > 0 && c < 130, "cluster temp \(c)") }
         for c in t.gpuSensorsC { XCTAssertTrue(c > 0 && c < 130, "gpu sensor \(c)") }
     }
+
+    // MARK: Graph zoom
+
+    func testZoomedFlatSeriesStaysFlatAndCentred() {
+        let z = zoomed([0.68, 0.68, 0.68], minSpan: 0.04, floor: 0)
+        XCTAssertEqual(z.count, 3)
+        for v in z { XCTAssertEqual(v, 0.5, accuracy: 0.001) }
+    }
+
+    func testZoomedUsesTheRecentRangeAndKeepsOrder() {
+        let z = zoomed([0.02, 0.05, 0.40, 0.05], minSpan: 0.15, floor: 0, headroom: 0)
+        XCTAssertEqual(z.min()!, 0, accuracy: 0.001)
+        XCTAssertEqual(z.max()!, 1, accuracy: 0.001)
+        XCTAssertTrue(z[2] > z[1] && z[1] > z[0])
+    }
+
+    func testZoomedRespectsFloorAndMinimumSpan() {
+        // A tiny wobble is not blown up: 0.01 to 0.03 with a 0.15 minimum span stays in the lower part.
+        let z = zoomed([0.01, 0.03], minSpan: 0.15, floor: 0)
+        XCTAssertEqual(z[0], 0.01 / 0.15, accuracy: 0.001)
+        XCTAssertTrue(z[1] < 0.3)
+    }
+
+    func testZoomedEmpty() {
+        XCTAssertEqual(zoomed([], minSpan: 1), [])
+    }
+
+    func testZoomedPaddingGivesRoomAroundTheData() {
+        // A GPU that never goes above 2%: with 5 points of padding the line is not squashed into the
+        // bottom of a 0...100% scale, and not pinned to the top either.
+        let z = zoomed([0, 0.01, 0.02, 0.01], minSpan: 0.07, floor: 0, padding: 0.05)
+        XCTAssertEqual(z.min()!, 0, accuracy: 0.001)               // floor holds
+        XCTAssertTrue(z.max()! > 0.2 && z.max()! < 0.5, "max \(z.max()!)")
+    }
+
+    func testZoomedPaddingBelowAndAboveWithoutFloor() {
+        let z = zoomed([40, 44], minSpan: 2, padding: 1)             // range 39...45
+        XCTAssertEqual(z[0], 1.0 / 6, accuracy: 0.001)
+        XCTAssertEqual(z[1], 5.0 / 6, accuracy: 0.001)
+    }
+
+    func testZoomedLeavesTenPercentHeadroomSoSpikesDoNotTouchTheTop() {
+        let z = zoomed([0.1, 0.1, 0.4, 0.1], minSpan: 0.05)          // range 0.1...0.4, headroom 0.03
+        XCTAssertTrue(z.max()! < 0.95, "max \(z.max()!)")           // not pinned to the top
+        XCTAssertTrue(z.min()! > 0.05, "min \(z.min()!)")           // nor to the bottom
+        XCTAssertEqual(z.max()!, (0.4 - 0.07) / 0.36, accuracy: 0.001)   // 0.917: 8% below the top
+    }
 }

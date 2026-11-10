@@ -14,18 +14,20 @@ struct MonitorState {
     var gpu: Double?
     var power: PowerSnapshot?
     var thermal: ThermalSnapshot?
-    var coreUsage: [Double] = []        // per logical core, 0...1, only while the CPU box is expanded
+    var coreUsage: [Double] = []        // per logical core, 0...1, only while the CPU page is open
     var gpuDetail: GPUDetails?
+    // Short histories, kept only while the CPU or GPU page is open.
+    var coreHistory: [[Double]] = []     // raw load per logical core, 0...1
+    var gpuRendererHistory: [Double] = []
+    var gpuTilerHistory: [Double] = []
+    var gpuPowerHistory: [Double] = []     // watts
+    var gpuMemoryHistory: [Double] = []    // bytes
+    var gpuSensorHistory: [[Double]] = []   // one series per GPU temperature sensor, degrees C
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
-    var cpuTempHistory: [Double] = []   // °C, one point per thermal read (about every 3 s)
-    var gpuTempHistory: [Double] = []
-    var ramTempHistory: [Double] = []
-    var ssdTempHistory: [Double] = []
-    var avgTempHistory: [Double] = []
     var driveHistory: [String: [DriveSample]] = [:]
 }
 
@@ -83,15 +85,16 @@ final class Monitor: ObservableObject {
     var thermal: ThermalSnapshot? { state.thermal }
     var coreUsage: [Double] { state.coreUsage }
     var gpuDetail: GPUDetails? { state.gpuDetail }
+    var coreHistory: [[Double]] { state.coreHistory }
+    var gpuRendererHistory: [Double] { state.gpuRendererHistory }
+    var gpuTilerHistory: [Double] { state.gpuTilerHistory }
+    var gpuPowerHistory: [Double] { state.gpuPowerHistory }
+    var gpuMemoryHistory: [Double] { state.gpuMemoryHistory }
+    var gpuSensorHistory: [[Double]] { state.gpuSensorHistory }
     var ramHistory: [Double] { state.ramHistory }
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
-    var cpuTempHistory: [Double] { state.cpuTempHistory }
-    var gpuTempHistory: [Double] { state.gpuTempHistory }
-    var ramTempHistory: [Double] { state.ramTempHistory }
-    var ssdTempHistory: [Double] { state.ssdTempHistory }
-    var avgTempHistory: [Double] { state.avgTempHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
 
     /// External drives that are connected and not switched off in settings.
@@ -153,7 +156,7 @@ private final class Sampler {
             // instead of "Waiting for data" for a whole update interval.
             if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
             if coresOpened || gpuOpened {
-                self.detailRefresh?.cancel()   // chevron clicked repeatedly: keep only the last
+                self.detailRefresh?.cancel()   // pages opened quickly one after another: keep only the last
                 let work = DispatchWorkItem { [weak self] in self?.refreshDetail() }
                 self.detailRefresh = work
                 self.queue.asyncAfter(deadline: .now() + 1, execute: work)
@@ -195,18 +198,22 @@ private final class Sampler {
                 // One registry read serves both the overall value and the detail.
                 state.gpuDetail = gpu.details()
                 state.gpu = state.gpuDetail?.device
+                push(&state.gpuRendererHistory, state.gpuDetail?.renderer)
+                push(&state.gpuTilerHistory, state.gpuDetail?.tiler)
+                push(&state.gpuPowerHistory, state.power?.gpuWatts)
+                push(&state.gpuMemoryHistory, state.gpuDetail?.memoryBytes)
             } else {
                 state.gpu = gpu.utilization()
-                state.gpuDetail = nil
+                clearGPUDetail()
             }
             push(&state.gpuHistory, state.gpu)
         } else {
-            state.gpuDetail = nil
+            clearGPUDetail()
         }
-        if shown.contains(.power) {
+        if shown.contains(.power) || gpuDetail {   // the GPU page shows GPU power too
             if tickCount % 2 == 1 { state.power = power.snapshot() }   // heaviest read: every other tick
-            push(&state.powerHistory, state.power?.systemWatts)
         }
+        if shown.contains(.power) { push(&state.powerHistory, state.power?.systemWatts) }
         sampleThermal()
 
         let wantsDrives = shown.contains(.drives) || shown.contains(.disk)
@@ -233,6 +240,14 @@ private final class Sampler {
         onSample?(state)
     }
 
+    private func clearGPUDetail() {
+        state.gpuDetail = nil
+        state.gpuRendererHistory = []
+        state.gpuTilerHistory = []
+        state.gpuPowerHistory = []
+        state.gpuMemoryHistory = []
+    }
+
     /// Light refresh used right after a detail view opens: cores, GPU detail and the thermal groups.
     private func refreshDetail() {
         sampleCores()
@@ -242,16 +257,19 @@ private final class Sampler {
         onSample?(state)
     }
 
-    /// Per-core load, only while the CPU box is expanded; averaged over the same 5 s window as the
+    /// Per-core load, only while the CPU page is open; averaged over the same 5 s window as the
     /// overall CPU value. When closed, the baseline is dropped so reopening starts fresh.
     private func sampleCores() {
         guard cpuCores, shown.contains(.cpu) else {
             cpu.resetPerCore()
             state.coreUsage = []
+            state.coreHistory = []
             coreSamples = []
             return
         }
         if let sample = cpu.perCoreUsage() {
+            if state.coreHistory.count != sample.count { state.coreHistory = Array(repeating: [], count: sample.count) }
+            for core in sample.indices { push(&state.coreHistory[core], sample[core]) }
             coreSamples.append(sample)
             if coreSamples.count > displayWindow { coreSamples.removeFirst(coreSamples.count - displayWindow) }
             state.coreUsage = sample.indices.map { core in
@@ -275,19 +293,22 @@ private final class Sampler {
         if shown.contains(.thermal) { wanted.formUnion([.cpu, .gpu, .ram, .ssd, .fan]) }   // average + fan
         guard !wanted.isEmpty else {
             state.thermal = nil
-            state.cpuTempHistory = []; state.gpuTempHistory = []; state.ramTempHistory = []
-            state.ssdTempHistory = []; state.avgTempHistory = []
+            state.gpuSensorHistory = []
             return
         }
         let every = max(1, Int((3.0 / interval).rounded(.up)))
         guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
         if thermal == nil { thermal = ThermalCollector(chip: chip) }
         state.thermal = thermal?.snapshot(wanted: wanted)
-        push(&state.cpuTempHistory, state.thermal?.cpuC)
-        push(&state.gpuTempHistory, state.thermal?.gpuC)
-        push(&state.ramTempHistory, state.thermal?.ramC)
-        push(&state.ssdTempHistory, state.thermal?.ssdC)
-        push(&state.avgTempHistory, state.thermal?.averageC)
+        let sensors = state.thermal?.gpuSensorsC ?? []
+        if sensors.isEmpty {
+            state.gpuSensorHistory = []
+        } else {
+            if state.gpuSensorHistory.count != sensors.count {
+                state.gpuSensorHistory = Array(repeating: [], count: sensors.count)
+            }
+            for i in sensors.indices { push(&state.gpuSensorHistory[i], sensors[i]) }
+        }
     }
 
     /// Number of ticks that make up Activity Monitor's default 5 second averaging window.

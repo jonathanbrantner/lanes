@@ -16,8 +16,6 @@ enum ScreenshotMode {
         monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu]
         monitor.settings.hiddenDrives = []
         monitor.settings.coreDetails = true
-        monitor.settings.cpuExpanded = true
-        monitor.settings.gpuExpanded = true
 
         // Menu bar strip: the icon on a dark menu-bar-like background.
         let icon = IconRenderer.image(cells: monitor.iconCells())
@@ -29,8 +27,16 @@ enum ScreenshotMode {
         }
         write(strip, scale: 2, to: "\(outputDir)/menubar.png")
 
-        // Panel: the real SwiftUI view on a rounded dark card, like the popover.
-        let card = PanelView(monitor: monitor)
+        // Panels: the real SwiftUI views on a rounded dark card, like the popover.
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel.png")
+        monitor.settings.openDetail = .cpu
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-cpu.png")
+        monitor.settings.openDetail = .gpu
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-gpu.png")
+    }
+
+    private static func renderPanel(_ panel: PanelView, to path: String) {
+        let card = panel
             .background(Color(nsColor: NSColor(calibratedRed: 0.13, green: 0.13, blue: 0.16, alpha: 1)))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(12)
@@ -39,7 +45,7 @@ enum ScreenshotMode {
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         host.layoutSubtreeIfNeeded()
-        write(view: host, scale: 2, to: "\(outputDir)/panel.png")
+        write(view: host, scale: 2, to: path)
     }
 
     private static func demoState() -> MonitorState {
@@ -62,11 +68,15 @@ enum ScreenshotMode {
                                     clusterC: [.superCore: 52, .performance: 47, .efficiency: 41],
                                     gpuSensorsC: [41, 42, 42, 41, 43, 42, 41, 42, 42, 43, 41, 42])
         s.coreUsage = [0.22, 0.18, 0.12, 0.09, 0.07, 0.05, 0.31, 0.24, 0.06, 0.04, 0.03, 0.02]
-        s.gpuDetail = GPUDetails(device: 0.06, renderer: 0.05, tiler: 0.02)
-        s.cpuTempHistory = curve(60) { 40 + 6 * abs(sin($0 * 7)) + ($0 > 0.75 ? 10 * sin(($0 - 0.75) * 12) : 0) }
-        s.gpuTempHistory = curve(60) { 38 + 3 * abs(sin($0 * 5)) }
-        s.ssdTempHistory = curve(60) { 36 + 2 * abs(sin($0 * 4)) }
-        s.avgTempHistory = curve(60) { 39 + 4 * abs(sin($0 * 6)) + ($0 > 0.75 ? 6 * sin(($0 - 0.75) * 12) : 0) }
+        s.gpuDetail = GPUDetails(device: 0.06, renderer: 0.05, tiler: 0.02, memoryBytes: 236_000_000)
+        s.coreHistory = s.coreUsage.enumerated().map { core, load in
+            curve(60) { max(0, min(1, load * (0.5 + 1.0 * abs(sin($0 * (4 + Double(core)) + Double(core)))))) }
+        }
+        s.gpuPowerHistory = curve(60) { 0.05 + 0.12 * max(0, sin($0 * 15)) }
+        s.gpuMemoryHistory = curve(60) { 200_000_000 + 40_000_000 * sin($0 * 5) }
+        s.gpuRendererHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 17)) }
+        s.gpuTilerHistory = curve(60) { 0.01 + 0.03 * max(0, sin($0 * 13 + 1)) }
+        s.gpuSensorHistory = (0..<12).map { i in curve(30) { 41 + 1.5 * sin($0 * 6 + Double(i)) + 0.8 * Double(i % 3) } }
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,
                             readBytesPerSec: 412e6, writeBytesPerSec: 186e6)
         let internalDisk = DriveRate(bsdName: "disk0", label: "Internal SSD", model: "Demo", isInternal: true,

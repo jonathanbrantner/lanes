@@ -56,8 +56,6 @@ final class Settings: ObservableObject {
     private static let intervalKey = "updateInterval"
     private static let showTempKey = "showTemperatures"
     private static let coreDetailsKey = "coreDetails"
-    private static let cpuExpandedKey = "cpuExpanded"
-    private static let gpuExpandedKey = "gpuExpanded"
     private static let unitKey = "temperatureUnit"
     private static let chipKey = "chipOverride"
 
@@ -76,16 +74,13 @@ final class Settings: ObservableObject {
     @Published var coreDetails: Bool {
         didSet { UserDefaults.standard.set(coreDetails, forKey: Self.coreDetailsKey) }
     }
-    /// Whether the CPU and GPU boxes are currently expanded (remembered).
-    @Published var cpuExpanded: Bool {
-        didSet { UserDefaults.standard.set(cpuExpanded, forKey: Self.cpuExpandedKey) }
-    }
-    @Published var gpuExpanded: Bool {
-        didSet { UserDefaults.standard.set(gpuExpanded, forKey: Self.gpuExpandedKey) }
-    }
-    /// The core views are only worth sampling when the switch is on and the box is open.
-    var cpuCoresVisible: Bool { coreDetails && cpuExpanded }
-    var gpuDetailVisible: Bool { coreDetails && gpuExpanded }
+    /// The item whose full page is open in the panel (nil = the tile overview). Not saved: the panel
+    /// always opens on the tiles. Opening the CPU or GPU page is what shows its cores or sensors.
+    @Published var openDetail: MonitorItem?
+
+    /// The core views are only worth sampling while their page is open and the switch is on.
+    var cpuCoresVisible: Bool { coreDetails && openDetail == .cpu }
+    var gpuDetailVisible: Bool { coreDetails && openDetail == .gpu }
 
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {
@@ -121,8 +116,6 @@ final class Settings: ObservableObject {
         panelItems = Self.load(Self.panelKey, default: Set(MonitorItem.allCases))
         hiddenDrives = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? [])
         coreDetails = UserDefaults.standard.bool(forKey: Self.coreDetailsKey)
-        cpuExpanded = UserDefaults.standard.bool(forKey: Self.cpuExpandedKey)
-        gpuExpanded = UserDefaults.standard.bool(forKey: Self.gpuExpandedKey)
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
