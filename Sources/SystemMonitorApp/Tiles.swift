@@ -19,29 +19,38 @@ struct TileData: Identifiable {
 /// Clicking it opens that item's full section.
 struct Tile: View {
     let data: TileData
-    let action: () -> Void
+    /// Nil for tiles that have nothing more to show.
+    var action: (() -> Void)?
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Image(systemName: data.symbol).font(.system(size: 11)).foregroundStyle(data.color)
-                    Text(data.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer(minLength: 2)
-                    if let corner = data.corner {
-                        Text(corner).font(.system(size: 10, design: .monospaced)).foregroundStyle(data.cornerColor)
-                    }
-                }
-                Text(data.big).font(.system(size: 20, weight: .semibold)).monospacedDigit()
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
-                HistoryChart(values: data.history, color: data.color).frame(height: 28)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+        if let action {
+            Button(action: action) { content }.buttonStyle(.plain)
+        } else {
+            content
         }
-        .buttonStyle(.plain)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Image(systemName: data.symbol).font(.system(size: 11)).foregroundStyle(data.color)
+                Text(data.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 2)
+                if let corner = data.corner {
+                    Text(corner).font(.system(size: 10, design: .monospaced)).foregroundStyle(data.cornerColor)
+                }
+                if action != nil {
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
+                }
+            }
+            Text(data.big).font(.system(size: 20, weight: .semibold)).monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+            HistoryChart(values: data.history, color: data.color).frame(height: 28)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }

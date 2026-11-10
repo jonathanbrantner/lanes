@@ -69,8 +69,6 @@ enum ScreenshotMode {
         s.gpuDetail = GPUDetails(device: 0.06, renderer: 0.05, tiler: 0.02)
         s.cpuTempHistory = curve(60) { 40 + 6 * abs(sin($0 * 7)) + ($0 > 0.75 ? 10 * sin(($0 - 0.75) * 12) : 0) }
         s.gpuTempHistory = curve(60) { 38 + 3 * abs(sin($0 * 5)) }
-        s.ssdTempHistory = curve(60) { 36 + 2 * abs(sin($0 * 4)) }
-        s.avgTempHistory = curve(60) { 39 + 4 * abs(sin($0 * 6)) + ($0 > 0.75 ? 6 * sin(($0 - 0.75) * 12) : 0) }
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,
                             readBytesPerSec: 412e6, writeBytesPerSec: 186e6)
         let internalDisk = DriveRate(bsdName: "disk0", label: "Internal SSD", model: "Demo", isInternal: true,

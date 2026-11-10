@@ -64,6 +64,8 @@ struct PanelView: View {
     // MARK: Main panel
 
     private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .power, .drives, .disk]
+    /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
+    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory]
 
     private var mainPanel: some View {
         let visible = visibleSections
@@ -75,7 +77,9 @@ struct PanelView: View {
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 ForEach(tiles, id: \.self) { item in
-                    if let data = tileData(item) { Tile(data: data) { detail = item } }
+                    if let data = tileData(item) {
+                        Tile(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+                    }
                 }
             }
             if visible.contains(.thermal) { thermalStrip }
@@ -99,24 +103,19 @@ struct PanelView: View {
 
     /// Average temperature and fan speed as one line under the tiles.
     private var thermalStrip: some View {
-        Button { detail = .thermal } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "thermometer.medium").foregroundStyle(MonitorItem.thermal.color)
-                if let avg = monitor.thermal?.averageC {
-                    Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
-                }
-                if let fan = monitor.thermal?.fans.first {
-                    Text("·").foregroundStyle(.secondary)
-                    Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+            Image(systemName: "thermometer.medium").foregroundStyle(MonitorItem.thermal.color)
+            if let avg = monitor.thermal?.averageC {
+                Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
             }
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            if let fan = monitor.thermal?.fans.first {
+                Text("·").foregroundStyle(.secondary)
+                Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
+            }
+            Spacer()
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: Tiles
@@ -203,62 +202,13 @@ struct PanelView: View {
     private func section(for item: MonitorItem) -> some View {
         switch item {
         case .memory: memorySection
-        case .drives: drivesSection
-        case .disk: diskSection
         case .cpu: percentSection(.cpu, value: monitor.cpu, history: monitor.cpuHistory,
                                   temp: shownTemp(monitor.thermal?.cpuC), tempHistory: monitor.cpuTempHistory,
                                   detail: { if settings.coreDetails { cpuCoresView } })
         case .gpu: percentSection(.gpu, value: monitor.gpu, history: monitor.gpuHistory,
                                   temp: shownTemp(monitor.thermal?.gpuC), tempHistory: monitor.gpuTempHistory,
                                   detail: { if settings.coreDetails { gpuDetailView } })
-        case .power: powerSection
-        case .thermal: thermalSection
-        }
-    }
-
-    // MARK: Power
-
-    private var powerSection: some View {
-        let peak = max(15, monitor.powerHistory.max() ?? 15)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                header(.power)
-                Spacer()
-                if let watts = monitor.power?.systemWatts {
-                    Text(String(format: "%.1f W", watts)).monospacedDigit()
-                }
-            }
-            HistoryChart(values: monitor.powerHistory.map { $0 / peak }, color: MonitorItem.power.color)
-                .frame(height: 36)
-            HStack {
-                Text("Whole system").foregroundStyle(.secondary)
-                Spacer()
-                if let gpu = monitor.power?.gpuWatts {
-                    Text(String(format: "GPU %.2f W", gpu)).monospacedDigit().foregroundStyle(.secondary)
-                }
-            }
-            .font(.caption)
-        }
-    }
-
-    // MARK: Average temperature and fan
-
-    private var thermalSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                header(.thermal)
-                Spacer()
-                if let avg = monitor.thermal?.averageC { Text(settings.temperature(avg)).monospacedDigit() }
-            }
-            if let fan = monitor.thermal?.fans.first {
-                HStack {
-                    Text("Fan").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(String(format: "%.0f RPM", fan.rpm)).monospacedDigit()
-                }
-                .font(.caption)
-            }
-            tempChart(monitor.avgTempHistory, .red, always: true)
+        default: EmptyView()
         }
     }
 
@@ -305,51 +255,6 @@ struct PanelView: View {
             Text(title).foregroundStyle(.secondary)
             Spacer(minLength: 2)
             Text(bytes(value)).monospacedDigit()
-        }
-    }
-
-    // MARK: External drives and internal disk
-
-    private var drivesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header(.drives)
-            if monitor.externalDrives.isEmpty {
-                Text(monitor.connectedExternalLabels.isEmpty ? "No external drive connected"
-                                                              : "All external drives are hidden in Settings")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(monitor.externalDrives, id: \.bsdName) { drive in
-                driveRow(drive)
-            }
-        }
-    }
-
-    private var diskSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                header(.disk)
-                Spacer()
-            }
-            if let drive = monitor.internalDrive {
-                driveRow(drive)
-            } else {
-                Text("Waiting for data").foregroundStyle(.secondary)
-            }
-            tempChart(monitor.ssdTempHistory, .red, label: shownTemp(monitor.thermal?.ssdC))
-        }
-    }
-
-    private func driveRow(_ drive: DriveRate) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(drive.label).font(.subheadline)
-            HStack {
-                Label { Text(Monitor.speed(drive.readMBps)) } icon: { Image(systemName: "arrow.down").foregroundStyle(.blue) }
-                Spacer()
-                Label { Text(Monitor.speed(drive.writeMBps)) } icon: { Image(systemName: "arrow.up").foregroundStyle(.orange) }
-            }
-            .font(.system(.body, design: .monospaced))
-            Sparkline(samples: monitor.driveHistory[drive.bsdName] ?? [])
-                .frame(height: 32)
         }
     }
 
@@ -443,10 +348,9 @@ struct PanelView: View {
     /// A thin chart of the recent temperature. It zooms to the recent range (at least 10 degrees tall)
     /// so small changes show up, and hides itself until there are a few readings.
     @ViewBuilder
-    private func tempChart(_ history: [Double], _ color: Color, always: Bool = false, label: String? = nil,
+    private func tempChart(_ history: [Double], _ color: Color, label: String? = nil,
                            labelColor: Color = .secondary) -> some View {
-        let enabled = always || settings.showTemperatures
-        if enabled, label != nil || history.count > 2 {
+        if settings.showTemperatures, label != nil || history.count > 2 {
             HStack(spacing: 4) {
                 if let label {
                     Text(label).font(.caption).monospacedDigit().foregroundStyle(labelColor)
@@ -583,35 +487,5 @@ struct MemoryBar: View {
 
     private func segment(_ value: Double, _ total: Double, _ width: CGFloat, _ color: Color) -> some View {
         Rectangle().fill(color).frame(width: width * CGFloat(min(value / total, 1)))
-    }
-}
-
-/// Last 60 seconds of read (blue) and write (orange) speed.
-struct Sparkline: View {
-    let samples: [DriveSample]
-
-    var body: some View {
-        GeometryReader { geo in
-            let peak = max(1, samples.map { max($0.read, $0.write) }.max() ?? 1)
-            ZStack {
-                line(samples.map(\.read), peak: peak, in: geo.size).stroke(Color.blue, lineWidth: 1.5)
-                line(samples.map(\.write), peak: peak, in: geo.size).stroke(Color.orange, lineWidth: 1.5)
-            }
-            .background(Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-        }
-    }
-
-    private func line(_ values: [Double], peak: Double, in size: CGSize) -> Path {
-        var path = Path()
-        guard values.count > 1 else { return path }
-        let step = size.width / CGFloat(Monitor.historyLength - 1)
-        let startX = size.width - step * CGFloat(values.count - 1)
-        for (i, v) in values.enumerated() {
-            let point = CGPoint(x: startX + step * CGFloat(i),
-                                y: size.height - size.height * CGFloat(v / peak))
-            i == 0 ? path.move(to: point) : path.addLine(to: point)
-        }
-        return path
     }
 }
