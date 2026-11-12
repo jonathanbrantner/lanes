@@ -90,6 +90,10 @@ final class Settings: ObservableObject {
     @Published var menuBarIcons: Bool {
         didSet { UserDefaults.standard.set(menuBarIcons, forKey: "menuBarIcons") }
     }
+    /// Show the CPU and GPU temperature in the menu bar too (red, after the load).
+    @Published var menuBarTemperatures: Bool {
+        didSet { UserDefaults.standard.set(menuBarTemperatures, forKey: "menuBarTemperatures") }
+    }
     /// nil = detect from this Mac's CPU name.
     @Published var chipOverride: ChipFamily? {
         didSet { UserDefaults.standard.set(chipOverride?.rawValue, forKey: Self.chipKey) }
@@ -123,6 +127,7 @@ final class Settings: ObservableObject {
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")
+        menuBarTemperatures = UserDefaults.standard.object(forKey: "menuBarTemperatures") as? Bool ?? true
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
         updateInterval = Self.intervals.contains(saved) ? saved : 1

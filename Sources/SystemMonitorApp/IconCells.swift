@@ -62,9 +62,24 @@ extension Monitor {
             }
         }
         if on.contains(.disk), let d = internalDrive {
-            cells.append(cell(.disk, label: "DISK", value: Self.speed(d.readMBps + d.writeMBps),
-                              short: Self.speed(d.readMBps + d.writeMBps, unit: ""),
-                              samples: ["DISK", "999.9 MB/s"], shortSamples: ["999.9"]))
+            let tempText: (String, NSColor)? = settings.showTemperatures && settings.menuBarTemperatures
+                ? thermal?.ssdC.map { (settings.temperature($0, symbol: false), .systemRed) } : nil
+            if icons {
+                // Same two-row read / write layout as the external drive, with its own symbol and
+                // the internal SSD's temperature in red.
+                var built = IconCell(
+                    layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(d.readMBps, unit: "")),
+                                     bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(d.writeMBps, unit: ""))),
+                    color: .labelColor, widthSamples: ["↓ 999.9"])
+                built.leadingSymbol = (symbol(.disk), MonitorItem.disk.nsColor)
+                if let tempText { built.accent = tempText }
+                cells.append(built)
+            } else {
+                var built = cell(.disk, label: "DISK", value: Self.speed(d.readMBps + d.writeMBps),
+                                 samples: ["DISK", "999.9 MB/s"])
+                if let tempText { built.accent = (" " + tempText.0, tempText.1) }
+                cells.append(built)
+            }
         }
         if on.contains(.power), let watts = power?.systemWatts {
             cells.append(cell(.power, label: "PWR", value: String(format: "%.1f W", watts),
@@ -72,19 +87,24 @@ extension Monitor {
                               samples: ["PWR", "88.8 W"], shortSamples: ["88.8 W"]))
         }
         if on.contains(.thermal), let t = thermal, t.averageC != nil || !t.fans.isEmpty {
-            var parts: [String] = []
-            if let avg = t.averageC { parts.append(settings.temperature(avg, symbol: false)) }
-            if let fan = t.fans.first { parts.append(String(format: "%.0frpm", fan.rpm)) }
-            cells.append(cell(.thermal, label: "TEMP", value: parts.joined(separator: " "),
-                              samples: ["TEMP", "212° 9999rpm"], shortSamples: ["212° 9999rpm"]))
+            let avg = t.averageC.map { settings.temperature($0, symbol: false) }
+            let fan = t.fans.first.map { String(format: "%.0frpm", $0.rpm) }
+            var built = cell(.thermal, label: "TEMP", value: fan.map { avg == nil ? $0 : " " + $0 } ?? "",
+                             samples: ["TEMP", "212° 9999rpm"], shortSamples: ["99° 9999rpm"])
+            if let avg { built.accent = (avg, .systemRed); built.accentFirst = true }
+            cells.append(built)
         }
         for (item, label, load) in [(MonitorItem.cpu, "CPU", cpu), (.gpu, "GPU", gpu)] {
             guard on.contains(item), let load else { continue }
             let tempC = item == .cpu ? thermal?.cpuC : thermal?.gpuC
-            let temp = settings.showTemperatures ? tempC.map { " " + settings.temperature($0, symbol: false) } : nil
+            let temp = settings.showTemperatures && settings.menuBarTemperatures
+                ? tempC.map { " " + settings.temperature($0, symbol: false) } : nil
             let sample = temp == nil ? "100%" : "100% 212°"
-            cells.append(cell(item, label: label, value: String(format: "%.0f%%", load * 100) + (temp ?? ""),
-                              samples: [label, sample], shortSamples: [sample]))
+            let percent = String(format: "%.0f%%", load * 100)
+            var built = cell(item, label: label, value: percent, short: percent,
+                             samples: [label, sample], shortSamples: ["99%"])
+            if let temp { built.accent = (temp, .systemRed) }   // red temperature, like the panel
+            cells.append(built)
         }
         return cells
     }

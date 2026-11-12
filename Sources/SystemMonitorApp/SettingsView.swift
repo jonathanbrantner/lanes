@@ -69,6 +69,12 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
+                if settings.showTemperatures {
+                    Divider()
+                    SettingsRow(title: "Temperature in menu bar") {
+                        Toggle("", isOn: $settings.menuBarTemperatures).toggleStyle(.checkbox).labelsHidden()
+                    }
+                }
                 Divider()
                 SettingsRow(title: "Menu bar style") {
                     Picker("", selection: $settings.menuBarIcons) {
