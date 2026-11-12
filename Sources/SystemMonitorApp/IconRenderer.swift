@@ -25,6 +25,8 @@ struct IconCell {
     var accent: (text: String, color: NSColor)?
     /// Names style, two-row cells: a small coloured name to the left of the rows (SSD, DISK).
     var leadingLabel: (text: String, color: NSColor)?
+    /// Names style: a temperature drawn on the label line, after the name ("DISK  31°").
+    var labelAccent: (text: String, color: NSColor)?
     /// Draw the accent before the value instead of after it.
     var accentFirst = false
 
@@ -53,7 +55,7 @@ enum IconRenderer {
             ? [IconCell(layout: .labeled(label: "", value: "Lanes"), color: .labelColor, widthSamples: ["Lanes"])]
             : cells
 
-        let key = cells.map { "\($0.layout)|\($0.color)|\($0.labelColor)|\($0.leadingSymbol?.name ?? "")|\($0.leadingLabel?.text ?? "")|\($0.accent?.text ?? "")|\($0.accentFirst)|\($0.accent?.color ?? .clear)" }.joined(separator: ";")
+        let key = cells.map { "\($0.layout)|\($0.color)|\($0.labelColor)|\($0.leadingSymbol?.name ?? "")|\($0.leadingLabel?.text ?? "")|\($0.labelAccent?.text ?? "")|\($0.accent?.text ?? "")|\($0.accentFirst)|\($0.accent?.color ?? .clear)" }.joined(separator: ";")
         if key == cachedKey, let cachedImage { return cachedImage }
         let image = render(cells)
         cachedKey = key
@@ -122,9 +124,7 @@ enum IconRenderer {
         }
         var w = cell.widthSamples.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         if case .labeled(let label, let value) = cell.layout {
-            w = max(w,
-                    (label as NSString).size(withAttributes: [.font: labelFont]).width,
-                    valueText(cell, value).size().width)
+            w = max(w, labelText(cell, label).size().width, valueText(cell, value).size().width)
         }
         if case .icon(_, _, let value) = cell.layout {
             w = max(w, valueText(cell, value).size().width)
@@ -139,6 +139,17 @@ enum IconRenderer {
             _ = accent
         }
         return ceil(w)
+    }
+
+    /// The small name above the value, with an optional red temperature after it.
+    private static func labelText(_ cell: IconCell, _ label: String) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: label,
+                                               attributes: [.font: labelFont, .foregroundColor: cell.labelColor])
+        if let accent = cell.labelAccent {
+            result.append(NSAttributedString(string: "  " + accent.text,
+                                             attributes: [.font: labelFont, .foregroundColor: accent.color]))
+        }
+        return result
     }
 
     /// The value, with the accent (a red temperature) before or after it.
@@ -177,9 +188,10 @@ enum IconRenderer {
         case .labeled(let label, let value):
             let labelAttrs: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: cell.labelColor]
             let valueText = valueText(cell, value)
+            _ = labelAttrs
             if !label.isEmpty {
-                let s = (label as NSString).size(withAttributes: labelAttrs)
-                (label as NSString).draw(at: NSPoint(x: x + (width - s.width) / 2, y: 14), withAttributes: labelAttrs)
+                let text = labelText(cell, label)
+                text.draw(at: NSPoint(x: x + (width - text.size().width) / 2, y: 14))
             }
             let s = valueText.size()
             valueText.draw(at: NSPoint(x: x + (width - s.width) / 2, y: label.isEmpty ? 4 : 1))

@@ -51,20 +51,21 @@ extension Monitor {
         /// external drive and the internal disk; only the symbol (Icons) or name (Names) differs.
         func driveCell(_ item: MonitorItem, name: String, read: Double, write: Double, temp: (String, NSColor)?) -> IconCell {
             if icons {
+                // Icons style: the temperature gets some air between it and the arrows.
                 var built = IconCell(
                     layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(read, unit: "")),
                                      bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(write, unit: ""))),
                     color: .labelColor, widthSamples: ["↓ 999.9"])
                 built.leadingSymbol = (symbol(item), item.nsColor)
-                if let temp { built.accent = (" " + temp.0, temp.1) }
+                if let temp { built.accent = ("  " + temp.0, temp.1) }
                 return built
             }
             // Names style: the same shape as CPU and GPU: name above, then "↓0.0 ↑0.0 30°".
             var built = IconCell(
                 layout: .labeled(label: name, value: "↓" + Self.speed(read, unit: "") + " ↑" + Self.speed(write, unit: "")),
-                color: .labelColor, widthSamples: [name, temp == nil ? "↓99.9 ↑99.9" : "↓99.9 ↑99.9 99°"],
-                labelColor: item.nsColor)
-            if let temp { built.accent = (" " + temp.0, temp.1) }
+                color: .labelColor, widthSamples: ["↓99.9 ↑99.9"], labelColor: item.nsColor)
+            // The temperature goes on the name line, apart from the speeds: "DISK  31°".
+            if let temp { built.labelAccent = (temp.0, temp.1) }
             return built
         }
         if on.contains(.drives) {
