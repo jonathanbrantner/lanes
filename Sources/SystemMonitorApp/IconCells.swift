@@ -55,9 +55,9 @@ extension Monitor {
                 var built = IconCell(
                     layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(read, unit: "")),
                                      bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(write, unit: ""))),
-                    color: .labelColor, widthSamples: ["↓ 999.9"])
+                    color: .labelColor, widthSamples: ["↓ 9.9"])
                 built.leadingSymbol = (symbol(item), item.nsColor)
-                if let temp { built.accent = ("  " + temp.0, temp.1) }
+                if let temp { built.accent = (temp.0, temp.1) }
                 return built
             }
             // Names style: the same shape as CPU and GPU: name above, then "↓0.0 ↑0.0 30°".

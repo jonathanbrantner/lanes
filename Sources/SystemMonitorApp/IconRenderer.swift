@@ -135,7 +135,7 @@ enum IconRenderer {
             w += (label.text as NSString).size(withAttributes: [.font: labelFont]).width + iconGap
         }
         if case .twoRows = cell.layout, let accent = cell.accent {
-            w += iconGap + valueText(cell, "").size().width   // temperature to the right of the rows
+            w += iconGap + valueText(cell, "").size().width   // temperature right after the rows
             _ = accent
         }
         return ceil(w)
@@ -220,15 +220,23 @@ enum IconRenderer {
                 width -= size.width + iconGap
             }
             if cell.accent != nil {
+                // Temperature right after the rows (not at the far edge), so there is no hole.
                 let accentText = valueText(cell, "")
-                let accentWidth = accentText.size().width
-                accentText.draw(at: NSPoint(x: x + width - accentWidth, y: (height - accentText.size().height) / 2))
-                width -= accentWidth + iconGap
+                let used = max(inkWidth, rowSampleWidth(cell))
+                accentText.draw(at: NSPoint(x: x + used + iconGap, y: (height - accentText.size().height) / 2))
+                topString.draw(at: NSPoint(x: x, y: 11.5))
+                bottomString.draw(at: NSPoint(x: x, y: 0.5))
+                return
             }
             let inset = max(0, (width - inkWidth) / 2)
             topString.draw(at: NSPoint(x: x + inset, y: 11.5))
             bottomString.draw(at: NSPoint(x: x + inset, y: 0.5))
         }
+    }
+
+    /// Width reserved for the read / write rows (the widest sample).
+    private static func rowSampleWidth(_ cell: IconCell) -> CGFloat {
+        cell.widthSamples.map { ($0 as NSString).size(withAttributes: [.font: rowFont]).width }.max() ?? 0
     }
 
     private static func rowString(_ row: IconRow, textColor: NSColor) -> NSAttributedString {
