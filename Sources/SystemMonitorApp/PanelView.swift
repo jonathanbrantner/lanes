@@ -107,6 +107,7 @@ struct PanelView: View {
             Image(systemName: "thermometer.medium").foregroundStyle(MonitorItem.thermal.color)
             if let avg = monitor.thermal?.averageC {
                 Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.red)
             }
             if let fan = monitor.thermal?.fans.first {
                 Text("·").foregroundStyle(.secondary)
