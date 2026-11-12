@@ -143,7 +143,13 @@ enum IconRenderer {
 
     /// The value, with the accent (a red temperature) before or after it.
     private static func valueText(_ cell: IconCell, _ value: String) -> NSAttributedString {
-        let main = NSAttributedString(string: value, attributes: [.font: valueFont, .foregroundColor: cell.color])
+        let coloured = NSMutableAttributedString(string: value, attributes: [.font: valueFont, .foregroundColor: cell.color])
+        // Read and write arrows keep the blue and orange used everywhere else.
+        for (arrow, color) in [("↓", NSColor.systemBlue), ("↑", NSColor.systemOrange)] {
+            let range = (value as NSString).range(of: arrow)
+            if range.location != NSNotFound { coloured.addAttribute(.foregroundColor, value: color, range: range) }
+        }
+        let main = coloured
         guard let accent = cell.accent else { return main }
         let extra = NSAttributedString(string: accent.text,
                                        attributes: [.font: valueFont, .foregroundColor: accent.color])

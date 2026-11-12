@@ -50,13 +50,20 @@ extension Monitor {
         /// A drive: read on the first row, write on the second, in blue and orange. Same layout for the
         /// external drive and the internal disk; only the symbol (Icons) or name (Names) differs.
         func driveCell(_ item: MonitorItem, name: String, read: Double, write: Double, temp: (String, NSColor)?) -> IconCell {
-            let unit: String? = icons ? "" : nil
+            if icons {
+                var built = IconCell(
+                    layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(read, unit: "")),
+                                     bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(write, unit: ""))),
+                    color: .labelColor, widthSamples: ["↓ 999.9"])
+                built.leadingSymbol = (symbol(item), item.nsColor)
+                if let temp { built.accent = (" " + temp.0, temp.1) }
+                return built
+            }
+            // Names style: the same shape as CPU and GPU: name above, then "↓0.0 ↑0.0 30°".
             var built = IconCell(
-                layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(read, unit: unit)),
-                                 bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(write, unit: unit))),
-                color: .labelColor, widthSamples: [icons ? "↓ 999.9" : "↓ 999.9 MB/s"])
-            if icons { built.leadingSymbol = (symbol(item), item.nsColor) }
-            else { built.leadingLabel = (name, item.nsColor) }
+                layout: .labeled(label: name, value: "↓" + Self.speed(read, unit: "") + " ↑" + Self.speed(write, unit: "")),
+                color: .labelColor, widthSamples: [name, temp == nil ? "↓99.9 ↑99.9" : "↓99.9 ↑99.9 99°"],
+                labelColor: item.nsColor)
             if let temp { built.accent = (" " + temp.0, temp.1) }
             return built
         }
