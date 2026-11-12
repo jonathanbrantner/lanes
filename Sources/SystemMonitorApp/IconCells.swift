@@ -14,10 +14,22 @@ extension Monitor {
 
         /// One cell in the chosen style. `value` is the full text, `short` the Icons-style text,
         /// `samples` / `shortSamples` the widest strings for a steady width.
+        /// Solid symbols read better at menu bar size than the outline ones the panel uses.
+        func symbol(_ item: MonitorItem) -> String {
+            switch item {
+            case .memory: "memorychip"
+            case .drives: "externaldrive.fill"
+            case .disk: "internaldrive"
+            case .power: "bolt.fill"
+            case .thermal: "thermometer.medium"
+            case .cpu: "cpu"
+            case .gpu: "display"
+            }
+        }
         func cell(_ item: MonitorItem, label: String, value: String, short: String? = nil,
                   color: NSColor = .labelColor, samples: [String], shortSamples: [String]? = nil) -> IconCell {
             if icons {
-                return IconCell(layout: .icon(symbol: item.symbol, symbolColor: item.nsColor, value: short ?? value),
+                return IconCell(layout: .icon(symbol: symbol(item), symbolColor: item.nsColor, value: short ?? value),
                                 color: color, widthSamples: shortSamples ?? Array(samples.dropFirst()))
             }
             return IconCell(layout: .labeled(label: label, value: value), color: color, widthSamples: samples,
@@ -41,10 +53,12 @@ extension Monitor {
                                   samples: ["SSD", "88.8 GB"], shortSamples: ["none"]))
             } else {
                 // Arrows already say what it is, so both styles share the two-row layout.
-                cells.append(IconCell(
+                var drives = IconCell(
                     layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(externalRead, unit: icons ? "" : nil)),
                                      bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(externalWrite, unit: icons ? "" : nil))),
-                    color: .labelColor, widthSamples: [icons ? "↓ 999.9" : "↓ 999.9 MB/s"]))
+                    color: .labelColor, widthSamples: [icons ? "↓ 999.9" : "↓ 999.9 MB/s"])
+                if icons { drives.leadingSymbol = (symbol(.drives), MonitorItem.drives.nsColor) }
+                cells.append(drives)
             }
         }
         if on.contains(.disk), let d = internalDrive {

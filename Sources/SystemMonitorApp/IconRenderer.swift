@@ -19,6 +19,8 @@ struct IconCell {
     /// Strings used to reserve a fixed width, so the icon doesn't jitter as numbers change.
     let widthSamples: [String]
     var labelColor: NSColor = .secondaryLabelColor
+    /// Icons style: a symbol drawn to the left of a two-row cell (the drive arrows).
+    var leadingSymbol: (name: String, color: NSColor)?
 }
 
 /// Draws the menu bar icon as real readable values, not abstract bars.
@@ -39,7 +41,7 @@ enum IconRenderer {
             ? [IconCell(layout: .labeled(label: "", value: "Lanes"), color: .labelColor, widthSamples: ["Lanes"])]
             : cells
 
-        let key = cells.map { "\($0.layout)|\($0.color)|\($0.labelColor)" }.joined(separator: ";")
+        let key = cells.map { "\($0.layout)|\($0.color)|\($0.labelColor)|\($0.leadingSymbol?.name ?? "")" }.joined(separator: ";")
         if key == cachedKey, let cachedImage { return cachedImage }
         let image = render(cells)
         cachedKey = key
@@ -77,10 +79,22 @@ enum IconRenderer {
                     (value as NSString).size(withAttributes: [.font: valueFont]).width)
         }
         if case .icon = cell.layout { w += iconWidth + iconGap }
+        if cell.leadingSymbol != nil { w += iconWidth + iconGap }
         return ceil(w)
     }
 
-    private static let iconWidth: CGFloat = 13
+    /// A coloured SF Symbol centred in the icon column at `x`.
+    private static func drawSymbol(_ name: String, color: NSColor, x: CGFloat) {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return }
+        let size = image.size
+        image.draw(in: NSRect(x: x + (iconWidth - size.width) / 2, y: (height - size.height) / 2,
+                              width: size.width, height: size.height))
+    }
+
+    private static let iconWidth: CGFloat = 15
     private static let iconGap: CGFloat = 3
 
     private static func draw(_ cell: IconCell, x: CGFloat, width: CGFloat) {
@@ -100,20 +114,19 @@ enum IconRenderer {
             let textSize = (value as NSString).size(withAttributes: valueAttrs)
             let textX = x + width - textSize.width
             (value as NSString).draw(at: NSPoint(x: textX, y: (height - textSize.height) / 2), withAttributes: valueAttrs)
-            let config = NSImage.SymbolConfiguration(pointSize: 10.5, weight: .semibold)
-                .applying(NSImage.SymbolConfiguration(paletteColors: [symbolColor]))
-            if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(config) {
-                let size = image.size
-                image.draw(in: NSRect(x: x + (iconWidth - size.width) / 2, y: (height - size.height) / 2,
-                                      width: size.width, height: size.height))
-            }
+            drawSymbol(symbol, color: symbolColor, x: x)
         case .twoRows(let top, let bottom):
             // Centre the ink inside the reserved width, so the icon's visual middle matches its
             // geometric middle (and the popover arrow) even when the numbers are short.
             let topString = rowString(top, textColor: cell.color)
             let bottomString = rowString(bottom, textColor: cell.color)
             let inkWidth = max(topString.size().width, bottomString.size().width)
+            var x = x, width = width
+            if let lead = cell.leadingSymbol {
+                drawSymbol(lead.name, color: lead.color, x: x)
+                x += iconWidth + iconGap
+                width -= iconWidth + iconGap
+            }
             let inset = max(0, (width - inkWidth) / 2)
             topString.draw(at: NSPoint(x: x + inset, y: 11.5))
             bottomString.draw(at: NSPoint(x: x + inset, y: 0.5))
