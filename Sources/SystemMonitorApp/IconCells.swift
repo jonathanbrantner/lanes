@@ -47,39 +47,31 @@ extension Monitor {
                               short: String(format: "%.1f", gb), color: color,
                               samples: ["MEM", "88.8 GB"], shortSamples: ["88.8"]))
         }
+        /// A drive: read on the first row, write on the second, in blue and orange. Same layout for the
+        /// external drive and the internal disk; only the symbol (Icons) or name (Names) differs.
+        func driveCell(_ item: MonitorItem, name: String, read: Double, write: Double, temp: (String, NSColor)?) -> IconCell {
+            let unit: String? = icons ? "" : nil
+            var built = IconCell(
+                layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(read, unit: unit)),
+                                 bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(write, unit: unit))),
+                color: .labelColor, widthSamples: [icons ? "↓ 999.9" : "↓ 999.9 MB/s"])
+            if icons { built.leadingSymbol = (symbol(item), item.nsColor) }
+            else { built.leadingLabel = (name, item.nsColor) }
+            if let temp { built.accent = (" " + temp.0, temp.1) }
+            return built
+        }
         if on.contains(.drives) {
             if externalDrives.isEmpty {
                 cells.append(cell(.drives, label: "SSD", value: "none", color: .secondaryLabelColor,
                                   samples: ["SSD", "88.8 GB"], shortSamples: ["none"]))
             } else {
-                // Arrows already say what it is, so both styles share the two-row layout.
-                var drives = IconCell(
-                    layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(externalRead, unit: icons ? "" : nil)),
-                                     bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(externalWrite, unit: icons ? "" : nil))),
-                    color: .labelColor, widthSamples: [icons ? "↓ 999.9" : "↓ 999.9 MB/s"])
-                if icons { drives.leadingSymbol = (symbol(.drives), MonitorItem.drives.nsColor) }
-                cells.append(drives)
+                cells.append(driveCell(.drives, name: "SSD", read: externalRead, write: externalWrite, temp: nil))
             }
         }
         if on.contains(.disk), let d = internalDrive {
-            let tempText: (String, NSColor)? = settings.showTemperatures && settings.menuBarTemperatures
+            let temp: (String, NSColor)? = settings.showTemperatures && settings.menuBarTemperatures
                 ? thermal?.ssdC.map { (settings.temperature($0, symbol: false), .systemRed) } : nil
-            if icons {
-                // Same two-row read / write layout as the external drive, with its own symbol and
-                // the internal SSD's temperature in red.
-                var built = IconCell(
-                    layout: .twoRows(top: IconRow(symbol: "↓", symbolColor: .systemBlue, text: Self.speed(d.readMBps, unit: "")),
-                                     bottom: IconRow(symbol: "↑", symbolColor: .systemOrange, text: Self.speed(d.writeMBps, unit: ""))),
-                    color: .labelColor, widthSamples: ["↓ 999.9"])
-                built.leadingSymbol = (symbol(.disk), MonitorItem.disk.nsColor)
-                if let tempText { built.accent = tempText }
-                cells.append(built)
-            } else {
-                var built = cell(.disk, label: "DISK", value: Self.speed(d.readMBps + d.writeMBps),
-                                 samples: ["DISK", "999.9 MB/s"])
-                if let tempText { built.accent = (" " + tempText.0, tempText.1) }
-                cells.append(built)
-            }
+            cells.append(driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
         }
         if on.contains(.power), let watts = power?.systemWatts {
             cells.append(cell(.power, label: "PWR", value: String(format: "%.1f W", watts),

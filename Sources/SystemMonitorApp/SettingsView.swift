@@ -83,13 +83,6 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
-                Divider()
-                SettingsRow(title: "Core details") {
-                    Toggle("", isOn: $settings.coreDetails).toggleStyle(.checkbox).labelsHidden()
-                }
-                Text("A per-core view on the CPU and GPU pages.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, 8)
             }
 
             SectionHeader("General")
@@ -164,7 +157,7 @@ struct SettingsView: View {
                 definition("Swap used", "Memory moved to the SSD because RAM is full. A lot of swap makes the Mac slower.", nil)
                 definition("Pressure", "How hard macOS works to find free memory. \"Under pressure\" means heavy compressing or swapping.", nil)
                 definition("CPU / GPU temp", "Average of that chip's sensors. Memory temperature only appears on chips that have a memory sensor.", .red)
-                definition("Core details", "A core is one of your processor's workers. This shows how busy each one is, grouped as Efficiency cores (light tasks), Performance and Super cores (heavy tasks), with one temperature per group. Open the CPU tile to see it.", .indigo)
+                definition("Cores", "A core is one of your processor's workers. The CPU page shows how busy each one is, grouped as Efficiency cores (light tasks), Performance and Super cores (heavy tasks), with one temperature per group.", .indigo)
                 definition("GPU sensors", "macOS gives no per-GPU-core numbers, so Renderer and Tiler load are shown, plus the GPU's separate temperature sensors (S1, S2 ...). Sensors are not cores.", .purple)
                 definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
                 definition("Fan", "Current fan speed in revolutions per minute.", nil)

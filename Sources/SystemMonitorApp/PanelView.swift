@@ -221,12 +221,12 @@ struct PanelView: View {
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.cpuHistory),
                                   temp: shownTemp(monitor.thermal?.cpuC),
-                                  detail: { if settings.coreDetails { cpuCoresView } })
+                                  detail: { cpuCoresView })
         case .gpu: percentSection(.gpu, value: monitor.gpu,
                                   history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.gpuHistory),
                                   temp: shownTemp(monitor.thermal?.gpuC),
-                                  detail: { if settings.coreDetails { gpuDetailView } })
+                                  detail: { gpuDetailView })
         default: EmptyView()
         }
     }

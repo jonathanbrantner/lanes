@@ -23,6 +23,8 @@ struct IconCell {
     var leadingSymbol: (name: String, color: NSColor)?
     /// Icons style: text drawn right after the value in its own colour (the red temperature).
     var accent: (text: String, color: NSColor)?
+    /// Names style, two-row cells: a small coloured name to the left of the rows (SSD, DISK).
+    var leadingLabel: (text: String, color: NSColor)?
     /// Draw the accent before the value instead of after it.
     var accentFirst = false
 
@@ -51,7 +53,7 @@ enum IconRenderer {
             ? [IconCell(layout: .labeled(label: "", value: "Lanes"), color: .labelColor, widthSamples: ["Lanes"])]
             : cells
 
-        let key = cells.map { "\($0.layout)|\($0.color)|\($0.labelColor)|\($0.leadingSymbol?.name ?? "")|\($0.accent?.text ?? "")|\($0.accentFirst)|\($0.accent?.color ?? .clear)" }.joined(separator: ";")
+        let key = cells.map { "\($0.layout)|\($0.color)|\($0.labelColor)|\($0.leadingSymbol?.name ?? "")|\($0.leadingLabel?.text ?? "")|\($0.accent?.text ?? "")|\($0.accentFirst)|\($0.accent?.color ?? .clear)" }.joined(separator: ";")
         if key == cachedKey, let cachedImage { return cachedImage }
         let image = render(cells)
         cachedKey = key
@@ -60,7 +62,7 @@ enum IconRenderer {
     }
 
     private static func render(_ cells: [IconCell]) -> NSImage {
-        let widths = cells.map(width(of:))
+        let widths = stickyWidths(cells)
         // Icons style sits tighter: the symbol already separates the cells.
         let gap = cells.contains(where: \.isIconStyle) ? Self.tightGap : Self.gap
         let total = widths.reduce(0, +) + gap * CGFloat(cells.count - 1) + 4
@@ -75,6 +77,40 @@ enum IconRenderer {
         }
         image.isTemplate = false
         return image
+    }
+
+    // MARK: Steady width
+
+    // A cell never gets narrower just because its numbers got shorter: the whole strip would shift
+    // every time a digit changes, which is distracting. A cell shrinks only after it has been
+    // narrower for a long while (a one-off "999 MB/s" spike should not widen the bar for good).
+    private static var sticky: [String: (width: CGFloat, calm: Int)] = [:]
+    private static let calmTicks = 120
+
+    private static func identity(_ cell: IconCell) -> String {
+        let base: String
+        switch cell.layout {
+        case .labeled(let label, _): base = "L\(label)"
+        case .icon(let symbol, _, _): base = "I\(symbol)"
+        case .twoRows: base = "R\(cell.leadingSymbol?.name ?? cell.leadingLabel?.text ?? "")"
+        }
+        return base + (cell.accent == nil ? "" : "+")
+    }
+
+    private static func stickyWidths(_ cells: [IconCell]) -> [CGFloat] {
+        let ids = cells.map(identity)
+        if Set(ids) != Set(sticky.keys) { sticky = [:] }   // items or style changed: start fresh
+        return zip(cells, ids).map { cell, id in
+            let now = width(of: cell)
+            var entry = sticky[id] ?? (now, 0)
+            if now > entry.width { entry = (now, 0) }
+            else if now < entry.width {
+                entry.calm += 1
+                if entry.calm >= calmTicks { entry = (now, 0) }
+            } else { entry.calm = 0 }
+            sticky[id] = entry
+            return entry.width
+        }
     }
 
     private static func width(of cell: IconCell) -> CGFloat {
@@ -95,6 +131,9 @@ enum IconRenderer {
             w += iconWidth + iconGap
         }
         if cell.leadingSymbol != nil { w += iconWidth + iconGap }
+        if let label = cell.leadingLabel {
+            w += (label.text as NSString).size(withAttributes: [.font: labelFont]).width + iconGap
+        }
         if case .twoRows = cell.layout, let accent = cell.accent {
             w += iconGap + valueText(cell, "").size().width   // temperature to the right of the rows
             _ = accent
@@ -154,6 +193,13 @@ enum IconRenderer {
                 drawSymbol(lead.name, color: lead.color, x: x)
                 x += iconWidth + iconGap
                 width -= iconWidth + iconGap
+            }
+            if let label = cell.leadingLabel {
+                let attrs: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: label.color]
+                let size = (label.text as NSString).size(withAttributes: attrs)
+                (label.text as NSString).draw(at: NSPoint(x: x, y: (height - size.height) / 2), withAttributes: attrs)
+                x += size.width + iconGap
+                width -= size.width + iconGap
             }
             if cell.accent != nil {
                 let accentText = valueText(cell, "")

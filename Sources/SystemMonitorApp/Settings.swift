@@ -55,7 +55,6 @@ final class Settings: ObservableObject {
     private static let hiddenKey = "hiddenDrives"
     private static let intervalKey = "updateInterval"
     private static let showTempKey = "showTemperatures"
-    private static let coreDetailsKey = "coreDetails"
     private static let unitKey = "temperatureUnit"
     private static let chipKey = "chipOverride"
 
@@ -70,17 +69,13 @@ final class Settings: ObservableObject {
     @Published var showTemperatures: Bool {
         didSet { UserDefaults.standard.set(showTemperatures, forKey: Self.showTempKey) }
     }
-    /// Offer the per-core view in the CPU and GPU boxes.
-    @Published var coreDetails: Bool {
-        didSet { UserDefaults.standard.set(coreDetails, forKey: Self.coreDetailsKey) }
-    }
     /// The item whose full page is open in the panel (nil = the tile overview). Not saved: the panel
     /// always opens on the tiles. Opening the CPU or GPU page is what shows its cores or sensors.
     @Published var openDetail: MonitorItem?
 
-    /// The core views are only worth sampling while their page is open and the switch is on.
-    var cpuCoresVisible: Bool { coreDetails && openDetail == .cpu }
-    var gpuDetailVisible: Bool { coreDetails && openDetail == .gpu }
+    /// The core views are only worth sampling while their page is open is open.
+    var cpuCoresVisible: Bool { openDetail == .cpu }
+    var gpuDetailVisible: Bool { openDetail == .gpu }
 
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {
@@ -123,7 +118,6 @@ final class Settings: ObservableObject {
         menuBarItems = Self.load(Self.menuBarKey, default: [.memory, .drives])
         panelItems = Self.load(Self.panelKey, default: Set(MonitorItem.allCases))
         hiddenDrives = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? [])
-        coreDetails = UserDefaults.standard.bool(forKey: Self.coreDetailsKey)
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")

@@ -15,7 +15,6 @@ enum ScreenshotMode {
         monitor.settings.menuBarItems = [.memory, .drives]
         monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu]
         monitor.settings.hiddenDrives = []
-        monitor.settings.coreDetails = true
 
         // Menu bar strip: the icon on a dark menu-bar-like background.
         let icon = IconRenderer.image(cells: monitor.iconCells())

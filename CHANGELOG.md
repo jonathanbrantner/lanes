@@ -13,8 +13,8 @@ New interface
 
 New features
 - Temperatures (CPU, GPU, SSD, and memory where the chip has a sensor), in °C or °F, plus fan speed and an average, read without admin rights. Sensor tables for M1 to M6 with an automatic chip choice.
-- Core details (Settings, off by default): the CPU page shows one card per core class (Super, Performance, Efficiency) with its temperature and a small box with its own last-minute graph for every core. The GPU page shows Device, Renderer and Tiler load, GPU power, GPU memory, and a graph for each GPU temperature sensor. Per-class temperatures are checked on the M6 only.
-- Definitions of the memory terms and of Core details in Settings.
+- Cores: the CPU page shows one card per core class (Super, Performance, Efficiency) with its temperature and a small box with its own last-minute graph for every core. The GPU page shows Device, Renderer and Tiler load, GPU power, GPU memory, and a graph for each GPU temperature sensor. Per-class temperatures are checked on the M6 only.
+- Definitions of the memory terms and of cores in Settings.
 - `powermon --temps` lists every temperature sensor a Mac exposes, and `powermon --cluster-probe` finds which sensors belong to which core class.
 
 Fixes
