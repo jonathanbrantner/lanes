@@ -77,6 +77,8 @@ struct MiniBox: View {
     let value: String
     let history: [Double]
     let color: Color
+    /// Hover readout; set for boxes on an expanded page.
+    var scrub: ScrubReadout?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -85,7 +87,7 @@ struct MiniBox: View {
                 Spacer(minLength: 2)
                 Text(value).font(.system(size: 10, weight: .semibold, design: .monospaced)).lineLimit(1)
             }
-            HistoryChart(values: history, color: color).frame(height: 22)
+            HistoryChart(values: history, color: color, scrub: scrub).frame(height: 22)
         }
         .padding(6)
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))

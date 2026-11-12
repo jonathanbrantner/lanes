@@ -38,6 +38,16 @@ public final class GPUCollector {
 
     deinit { entries.forEach { IOObjectRelease($0) } }
 
+    /// Number of GPU cores (`gpu-core-count` on the accelerator entry). Read once; nil if the
+    /// Mac does not report it.
+    public lazy var coreCount: Int? = {
+        for entry in entries {
+            if let n = IORegistryEntryCreateCFProperty(entry, "gpu-core-count" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? NSNumber, n.intValue > 0 { return n.intValue }
+        }
+        return nil
+    }()
+
     private func performanceStats(_ entry: io_object_t) -> [String: Any]? {
         IORegistryEntryCreateCFProperty(entry, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?
             .takeRetainedValue() as? [String: Any]

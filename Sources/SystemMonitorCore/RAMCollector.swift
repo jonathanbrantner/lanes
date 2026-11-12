@@ -60,7 +60,12 @@ public struct RAMSnapshot {
 /// the pressure level arrives from the kernel as an event instead of being polled.
 public final class RAMCollector {
     private let total = ProcessInfo.processInfo.physicalMemory
-    private let page = UInt64(getpagesize())
+    /// The page size `host_statistics64` counts in (4 KB on Intel, 16 KB on Apple silicon).
+    private let page: UInt64 = {
+        var size: vm_size_t = 0
+        return host_page_size(mach_host_self(), &size) == KERN_SUCCESS && size > 0
+            ? UInt64(size) : UInt64(getpagesize())
+    }()
     private var swapUsed: UInt64 = 0
     private var pressure: MemoryPressure
     private var pressureSource: DispatchSourceMemoryPressure?

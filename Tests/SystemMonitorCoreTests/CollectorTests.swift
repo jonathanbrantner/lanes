@@ -217,4 +217,24 @@ final class CollectorTests: XCTestCase {
         XCTAssertTrue(z.min()! > 0.05, "min \(z.min()!)")           // nor to the bottom
         XCTAssertEqual(z.max()!, (0.4 - 0.07) / 0.36, accuracy: 0.001)   // 0.917: 8% below the top
     }
+
+    func testScrubIndexMapsPointerToRightAlignedSamples() {
+        // 60 slots over 590 pt: 10 pt per step. Three samples cover only the right edge.
+        XCTAssertEqual(scrubIndex(x: 590, width: 590, count: 3, slots: 60), 2)
+        XCTAssertEqual(scrubIndex(x: 570, width: 590, count: 3, slots: 60), 0)
+        XCTAssertNil(scrubIndex(x: 100, width: 590, count: 3, slots: 60))
+        XCTAssertEqual(scrubIndex(x: 0, width: 590, count: 60, slots: 60), 0)
+        XCTAssertNil(scrubIndex(x: 10, width: 590, count: 0, slots: 60))
+    }
+
+    func testAgoText() {
+        XCTAssertEqual(agoText(samplesAgo: 0, secondsPerSample: 5), "now")
+        XCTAssertEqual(agoText(samplesAgo: 9, secondsPerSample: 5), "45 s ago")
+        XCTAssertEqual(agoText(samplesAgo: 13, secondsPerSample: 5), "1 min 5 s ago")
+        XCTAssertEqual(agoText(samplesAgo: 12, secondsPerSample: 5), "1 min ago")
+    }
+
+    func testGPUCoreCountIsNilOrPositive() {
+        if let n = GPUCollector().coreCount { XCTAssertGreaterThan(n, 0) }
+    }
 }

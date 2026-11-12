@@ -39,6 +39,8 @@ final class Monitor: ObservableObject {
     @Published private(set) var state = MonitorState()
     /// Which logical CPU is which kind of core. Read on first use (when a core view first opens), once.
     private(set) lazy var topology = CPUTopology.detect()
+    /// Number of GPU cores, read once (nil if this Mac does not report it).
+    private(set) lazy var gpuCoreCount: Int? = GPUCollector().coreCount
 
     nonisolated static let historyLength = 60
 

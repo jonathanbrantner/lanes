@@ -120,6 +120,21 @@ struct PanelView: View {
 
     // MARK: Tiles
 
+    /// Hover readout for a graph that gets one sample per update tick.
+    private func scrub(_ values: [Double], format: @escaping (Double) -> String) -> ScrubReadout {
+        ScrubReadout(values: values, secondsPerSample: settings.updateInterval, format: format)
+    }
+
+    /// Same for a 0...1 load shown as a percentage.
+    private func loadScrub(_ values: [Double]) -> ScrubReadout {
+        scrub(values) { String(format: "%.0f%%", $0 * 100) }
+    }
+
+    /// Temperature sensors are read about every 3 seconds, in whole update intervals (see Sampler).
+    private var sensorSeconds: Double {
+        settings.updateInterval * max(1, (3.0 / settings.updateInterval).rounded(.up))
+    }
+
     private func percent(_ value: Double?) -> String { value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a" }
 
     /// Whole numbers once a speed is 10 MB/s or more ("412", "0.2").
@@ -144,7 +159,7 @@ struct PanelView: View {
         case .gpu:
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: percent(monitor.gpu),
-                            small: monitor.gpuDetail.map { "Renderer \(percent($0.renderer))" } ?? "Graphics",
+                            small: monitor.gpuCoreCount.map { "\($0) cores" } ?? "Graphics",
                             corner: shownTemp(monitor.thermal?.gpuC),
                             history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05))
         case .memory:
@@ -204,10 +219,12 @@ struct PanelView: View {
         case .memory: memorySection
         case .cpu: percentSection(.cpu, value: monitor.cpu,
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
+                                  scrub: loadScrub(monitor.cpuHistory),
                                   temp: shownTemp(monitor.thermal?.cpuC),
                                   detail: { if settings.coreDetails { cpuCoresView } })
         case .gpu: percentSection(.gpu, value: monitor.gpu,
                                   history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
+                                  scrub: loadScrub(monitor.gpuHistory),
                                   temp: shownTemp(monitor.thermal?.gpuC),
                                   detail: { if settings.coreDetails { gpuDetailView } })
         default: EmptyView()
@@ -229,7 +246,8 @@ struct PanelView: View {
             if let ram = monitor.ram {
                 Text("\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes)) used")
                 HistoryChart(values: zoomed(monitor.ramHistory, minSpan: 0.03, floor: 0, padding: 0.01),
-                             color: pressureColor(ram.pressure))
+                             color: pressureColor(ram.pressure),
+                             scrub: scrub(monitor.ramHistory.map { $0 * Double(ram.totalBytes) }) { bytes(UInt64(max(0, $0))) })
                     .frame(height: 40)
                 MemoryBar(ram: ram).frame(height: 8)
                 VStack(spacing: 3) {
@@ -264,7 +282,8 @@ struct PanelView: View {
     // MARK: CPU / GPU
 
     private func percentSection<Detail: View>(_ item: MonitorItem, value: Double?, history: [Double],
-                                              temp: String?, @ViewBuilder detail: () -> Detail) -> some View {
+                                              scrub: ScrubReadout?, temp: String?,
+                                              @ViewBuilder detail: () -> Detail) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 header(item)
@@ -272,7 +291,7 @@ struct PanelView: View {
                 if let temp { Text(temp).monospacedDigit().foregroundStyle(.red) }
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "-").monospacedDigit()
             }
-            HistoryChart(values: history, color: item.color).frame(height: 36)
+            HistoryChart(values: history, color: item.color, scrub: scrub).frame(height: 36)
             detail()
         }
     }
@@ -317,7 +336,8 @@ struct PanelView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: columns), spacing: 5) {
                 ForEach(Array(cluster.cpus.enumerated()), id: \.element) { index, cpu in
                     MiniBox(title: "\(cpu)", value: loads[index].map { percent($0) } ?? "-",
-                            history: zoomed(histories[index], minSpan: 0.07, floor: 0, padding: 0.05), color: color)
+                            history: zoomed(histories[index], minSpan: 0.07, floor: 0, padding: 0.05), color: color,
+                            scrub: loadScrub(histories[index]))
                 }
             }
         }
@@ -332,7 +352,8 @@ struct PanelView: View {
         let color = MonitorItem.gpu.color
         func box(_ title: String, _ value: Double?, _ history: [Double]) -> some View {
             MiniBox(title: title, value: value.map { percent($0) } ?? "-",
-                    history: zoomed(history, minSpan: 0.07, floor: 0, padding: 0.05), color: color)
+                    history: zoomed(history, minSpan: 0.07, floor: 0, padding: 0.05), color: color,
+                    scrub: loadScrub(history))
         }
         return VStack(alignment: .leading, spacing: 8) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
@@ -342,10 +363,12 @@ struct PanelView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 2), spacing: 5) {
                 MiniBox(title: "Power", value: monitor.power?.gpuWatts.map { String(format: "%.2f W", $0) } ?? "-",
-                        history: zoomed(monitor.gpuPowerHistory, minSpan: 0.5, floor: 0, padding: 0.1), color: .yellow)
+                        history: zoomed(monitor.gpuPowerHistory, minSpan: 0.5, floor: 0, padding: 0.1), color: .yellow,
+                        scrub: scrub(monitor.gpuPowerHistory) { String(format: "%.2f W", $0) })
                 MiniBox(title: "Memory", value: d?.memoryBytes.map { bytes(UInt64($0)) } ?? "-",
                         history: zoomed(monitor.gpuMemoryHistory, minSpan: 50_000_000, floor: 0, padding: 10_000_000),
-                        color: .green)
+                        color: .green,
+                        scrub: scrub(monitor.gpuMemoryHistory) { bytes(UInt64(max(0, $0))) })
             }
             if settings.showTemperatures, let sensors = monitor.thermal?.gpuSensorsC, !sensors.isEmpty {
                 HStack {
@@ -359,7 +382,11 @@ struct PanelView: View {
                         MiniBox(title: "S\(i + 1)", value: settings.temperature(sensors[i], symbol: false),
                                 history: zoomed(i < monitor.gpuSensorHistory.count ? monitor.gpuSensorHistory[i] : [],
                                                 minSpan: 4, padding: 1),
-                                color: .red)
+                                color: .red,
+                                scrub: i < monitor.gpuSensorHistory.count
+                                    ? ScrubReadout(values: monitor.gpuSensorHistory[i], secondsPerSample: sensorSeconds,
+                                                   format: { settings.temperature($0, symbol: false) })
+                                    : nil)
                     }
                 }
             }
@@ -406,10 +433,22 @@ struct PanelView: View {
 
 // MARK: - Charts
 
+/// What the hover readout of a graph shows: the real value of every sample (the graph itself is
+/// zoomed to its own range), how many seconds apart the samples are, and how to print a value.
+struct ScrubReadout {
+    let values: [Double]
+    let secondsPerSample: Double
+    let format: (Double) -> String
+}
+
 /// Filled history chart for a 0...1 value over the last 60 seconds.
 struct HistoryChart: View {
     let values: [Double]
     let color: Color
+    /// Real values behind `values`, for the hover readout. Nil (tiles) means no scrubbing.
+    var scrub: ScrubReadout?
+
+    @State private var hover: Int?
 
     var body: some View {
         GeometryReader { geo in
@@ -429,10 +468,42 @@ struct HistoryChart: View {
                     points.dropFirst().forEach { p.addLine(to: $0) }
                 }
                 .stroke(color, lineWidth: 1.5)
+                if let scrub, let i = hover, i < scrub.values.count, i < points.count {
+                    scrubMarker(scrub, index: i, at: points[i], size: geo.size)
+                }
             }
             .background(Color.primary.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                guard let scrub else { return }
+                switch phase {
+                case .active(let location):
+                    hover = scrubIndex(x: location.x, width: geo.size.width, count: scrub.values.count,
+                                       slots: Monitor.historyLength)
+                case .ended:
+                    hover = nil
+                }
+            }
         }
+    }
+
+    /// A vertical line at the sample under the pointer, a dot on the graph and the real value.
+    private func scrubMarker(_ scrub: ScrubReadout, index: Int, at point: CGPoint, size: CGSize) -> some View {
+        let ago = scrub.values.count - 1 - index
+        let text = "\(scrub.format(scrub.values[index])) · \(agoText(samplesAgo: ago, secondsPerSample: scrub.secondsPerSample))"
+        return ZStack(alignment: point.x > size.width / 2 ? .topLeading : .topTrailing) {
+            Rectangle().fill(Color.primary.opacity(0.55)).frame(width: 1, height: size.height)
+                .position(x: point.x, y: size.height / 2)
+            Circle().fill(color).overlay(Circle().stroke(Color.primary.opacity(0.8), lineWidth: 1))
+                .frame(width: 5, height: 5).position(point)
+            Text(text).font(.system(size: 9, weight: .medium, design: .monospaced))
+                .padding(.horizontal, 3).padding(.vertical, 1)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 3))
+                .padding(2)
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
     }
 
     private func chartPoints(in size: CGSize) -> [CGPoint] {
