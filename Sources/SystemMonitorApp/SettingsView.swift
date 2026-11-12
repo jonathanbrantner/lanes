@@ -70,6 +70,14 @@ struct SettingsView: View {
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
                 Divider()
+                SettingsRow(title: "Menu bar style") {
+                    Picker("", selection: $settings.menuBarIcons) {
+                        Text("Names").tag(false)
+                        Text("Icons").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                Divider()
                 SettingsRow(title: "Core details") {
                     Toggle("", isOn: $settings.coreDetails).toggleStyle(.checkbox).labelsHidden()
                 }

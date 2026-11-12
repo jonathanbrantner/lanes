@@ -12,6 +12,7 @@ struct IconCell {
     enum Layout {
         case labeled(label: String, value: String)   // tiny coloured label above a bigger value
         case twoRows(top: IconRow, bottom: IconRow)  // two equal lines (e.g. read / write)
+        case icon(symbol: String, symbolColor: NSColor, value: String)  // coloured symbol, then the value
     }
     let layout: Layout
     let color: NSColor                 // value text colour
@@ -67,6 +68,7 @@ enum IconRenderer {
         switch cell.layout {
         case .labeled: font = valueFont
         case .twoRows: font = rowFont
+        case .icon: font = valueFont
         }
         var w = cell.widthSamples.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         if case .labeled(let label, let value) = cell.layout {
@@ -74,8 +76,12 @@ enum IconRenderer {
                     (label as NSString).size(withAttributes: [.font: labelFont]).width,
                     (value as NSString).size(withAttributes: [.font: valueFont]).width)
         }
+        if case .icon = cell.layout { w += iconWidth + iconGap }
         return ceil(w)
     }
+
+    private static let iconWidth: CGFloat = 13
+    private static let iconGap: CGFloat = 3
 
     private static func draw(_ cell: IconCell, x: CGFloat, width: CGFloat) {
         switch cell.layout {
@@ -89,6 +95,19 @@ enum IconRenderer {
             let s = (value as NSString).size(withAttributes: valueAttrs)
             (value as NSString).draw(at: NSPoint(x: x + (width - s.width) / 2, y: label.isEmpty ? 4 : 1),
                                      withAttributes: valueAttrs)
+        case .icon(let symbol, let symbolColor, let value):
+            let valueAttrs: [NSAttributedString.Key: Any] = [.font: valueFont, .foregroundColor: cell.color]
+            let textSize = (value as NSString).size(withAttributes: valueAttrs)
+            let textX = x + width - textSize.width
+            (value as NSString).draw(at: NSPoint(x: textX, y: (height - textSize.height) / 2), withAttributes: valueAttrs)
+            let config = NSImage.SymbolConfiguration(pointSize: 10.5, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [symbolColor]))
+            if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(config) {
+                let size = image.size
+                image.draw(in: NSRect(x: x + (iconWidth - size.width) / 2, y: (height - size.height) / 2,
+                                      width: size.width, height: size.height))
+            }
         case .twoRows(let top, let bottom):
             // Centre the ink inside the reserved width, so the icon's visual middle matches its
             // geometric middle (and the popover arrow) even when the numbers are short.
