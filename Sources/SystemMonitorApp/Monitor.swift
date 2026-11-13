@@ -25,6 +25,7 @@ struct MonitorState {
     var gpuSensorHistory: [[Double]] = []   // one series per GPU temperature sensor, degrees C
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
+    var compressedHistory: [Double] = []   // bytes, kept while Memory is shown
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
@@ -94,6 +95,7 @@ final class Monitor: ObservableObject {
     var gpuMemoryHistory: [Double] { state.gpuMemoryHistory }
     var gpuSensorHistory: [[Double]] { state.gpuSensorHistory }
     var ramHistory: [Double] { state.ramHistory }
+    var compressedHistory: [Double] { state.compressedHistory }
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
@@ -187,6 +189,7 @@ private final class Sampler {
             if tickCount % 5 == 1 { ram.refreshSwap() }      // swap changes slowly
             state.ram = ram.snapshot()
             push(&state.ramHistory, state.ram?.usedFraction)
+            push(&state.compressedHistory, state.ram.map { Double($0.compressedBytes) })
         }
         if shown.contains(.cpu) {
             // Raw 1-tick sample feeds the chart; the displayed value is averaged over the

@@ -251,6 +251,16 @@ struct PanelView: View {
                              scrub: scrub(monitor.ramHistory.map { $0 * Double(ram.totalBytes) }) { bytes(UInt64(max(0, $0))) })
                     .frame(height: 40)
                 MemoryBar(ram: ram).frame(height: 8)
+                // How much memory macOS has squeezed, over the last minute: rising means pressure is building.
+                HStack {
+                    Text("Compressed over time").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(bytes(ram.compressedBytes)).font(.caption).monospacedDigit()
+                }
+                HistoryChart(values: zoomed(monitor.compressedHistory, minSpan: 100_000_000, floor: 0, padding: 20_000_000),
+                             color: .purple,
+                             scrub: scrub(monitor.compressedHistory) { bytes(UInt64(max(0, $0))) })
+                    .frame(height: 24)
                 VStack(spacing: 3) {
                     legend("App Memory", ram.appBytes, .blue)
                     legend("Wired", ram.wiredBytes, .orange)

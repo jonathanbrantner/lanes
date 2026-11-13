@@ -12,6 +12,8 @@ struct SettingsView: View {
     let back: () -> Void
 
     @State private var showMore = false
+    @State private var accuracy: [AccuracyLine]?
+    @State private var accuracyFailed = false
 
     var body: some View {
         Group {
@@ -148,6 +150,8 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             Divider()
+            accuracySection
+            Divider()
             VStack(alignment: .leading, spacing: 8) {
                 definition("App Memory", "Memory used by the apps you run and their helper processes.", .blue)
                 definition("Wired", "Memory the system must keep in RAM (kernel, drivers). It can't be compressed or swapped out.", .orange)
@@ -161,6 +165,47 @@ struct SettingsView: View {
                 definition("GPU sensors", "macOS gives no per-GPU-core numbers, so Renderer and Tiler load are shown, plus the GPU's separate temperature sensors (S1, S2 ...). Sensors are not cores.", .purple)
                 definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
                 definition("Fan", "Current fan speed in revolutions per minute.", nil)
+            }
+        }
+    }
+
+    // MARK: Check accuracy
+
+    /// Compares Lanes' memory numbers with `vm_stat` on this Mac, so a Mac that looks off can be checked.
+    private var accuracySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Accuracy").fontWeight(.semibold)
+                Spacer()
+                Button("Check now") { runAccuracyCheck() }
+            }
+            Text("Compares the memory numbers with macOS's own vm_stat. Activity Monitor uses the same counters.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let lines = accuracy {
+                ForEach(lines, id: \.name) { line in
+                    HStack {
+                        Image(systemName: line.isOK ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(line.isOK ? .green : .orange)
+                        Text(line.name)
+                        Spacer()
+                        Text(String(format: "%.2f vs %.2f GB  (%.2f%%)", line.lanesGB, line.referenceGB, line.differencePercent))
+                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+            } else if accuracyFailed {
+                Text("Could not run the check.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func runAccuracyCheck() {
+        guard let ram = monitor.ram else { accuracyFailed = true; return }
+        accuracyFailed = false
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = AccuracyCheck.run(snapshot: ram)
+            DispatchQueue.main.async {
+                accuracy = result
+                accuracyFailed = result == nil
             }
         }
     }

@@ -237,4 +237,23 @@ final class CollectorTests: XCTestCase {
     func testGPUCoreCountIsNilOrPositive() {
         if let n = GPUCollector().coreCount { XCTAssertGreaterThan(n, 0) }
     }
+
+    func testAccuracyReferenceParsesVMStat() {
+        let text = """
+        Mach Virtual Memory Statistics: (page size of 16384 bytes)
+        Pages free:                                    42171.
+        Pages purgeable:                               45017.
+        Pages wired down:                             160046.
+        File-backed pages:                            556237.
+        Anonymous pages:                              708063.
+        Pages occupied by compressor:                  68833.
+        """
+        let total = 25_769_803_776.0
+        let ref = AccuracyCheck.reference(vmStat: text, totalBytes: total)
+        XCTAssertNotNil(ref)
+        let gb = 1_073_741_824.0
+        XCTAssertEqual(ref!.wired, 160046 * 16384 / gb, accuracy: 0.0001)
+        XCTAssertEqual(ref!.used, (total - 42171 * 16384 - 556237 * 16384) / gb, accuracy: 0.0001)
+        XCTAssertNil(AccuracyCheck.reference(vmStat: "garbage", totalBytes: total))
+    }
 }
