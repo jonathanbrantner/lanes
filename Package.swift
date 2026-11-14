@@ -29,7 +29,6 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("DiskArbitration"),
-                .linkedFramework("SystemConfiguration"),
             ]
         ),
         .executableTarget(

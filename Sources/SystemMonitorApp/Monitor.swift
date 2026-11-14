@@ -86,7 +86,10 @@ final class Monitor: ObservableObject {
     }
 
     private func readBLE() {
-        bleReader.read { [weak self] devices in self?.bleBatteries = devices }
+        if ProcessInfo.processInfo.environment["LANES_NO_BLE"] == nil {
+            bleReader.read { [weak self] devices in self?.bleBatteries = devices }
+        }
+        guard ProcessInfo.processInfo.environment["LANES_NO_LOGI"] == nil else { return }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let found = LogitechReceiver.batteries()   // about a second; never on the sampler queue
             let status = LogitechReceiver.lastStatus

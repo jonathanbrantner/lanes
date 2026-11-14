@@ -32,6 +32,7 @@ struct PanelView: View {
     @ObservedObject private var settings: Settings
     @StateObject private var loginItem = LoginItem()
     @State private var showSettings = false
+    @State private var showAllSensors = false
     /// The item whose full page is open (opened by clicking its tile); nil = the tile overview.
     /// Kept in Settings so the sampler knows when a core view is on screen.
     private var detail: MonitorItem? {
@@ -342,40 +343,65 @@ struct PanelView: View {
 
     /// Every temperature, fan, power, voltage and current reading, grouped.
     private var sensorsSection: some View {
-        let groups: [(SensorReading.Kind, String)] = [(.temperature, "Temperatures"), (.fan, "Fans"),
-                                                      (.power, "Power"), (.voltage, "Voltage"), (.current, "Current")]
+        let readings = monitor.sensors
+        let thermal = monitor.thermal
+        // The few numbers that matter, then the long list only on request.
+        var key: [(String, String, Color)] = []
+        func temp(_ name: String, _ c: Double?) { if let c { key.append((name, settings.temperature(c), .red)) } }
+        temp("CPU", thermal?.cpuC)
+        temp("GPU", thermal?.gpuC)
+        temp("Memory", thermal?.ramC)
+        temp("SSD", thermal?.ssdC)
+        if let dies = SensorsCollector.summary(readings, kind: .temperature, namePrefix: "die") {
+            key.append(("Chip, \(dies.count) sensors", "avg \(settings.temperature(dies.average, symbol: false))  max \(settings.temperature(dies.maximum, symbol: false))", .red))
+        }
+        for fan in readings.filter({ $0.kind == .fan && $0.name == "Fan speed" }) { key.append((fan.name, sensorText(fan), .primary)) }
+        for power in readings.filter({ $0.kind == .power }).prefix(3) { key.append((power.name, sensorText(power), .primary)) }
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                header(.thermal)
-                Spacer()
-                Text("\(monitor.sensors.count) readings").font(.caption).foregroundStyle(.secondary)
-            }
-            if monitor.sensors.isEmpty { Text("Waiting for data").foregroundStyle(.secondary) }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(groups, id: \.0) { kind, title in
-                        let rows = monitor.sensors.filter { $0.kind == kind }
-                        if !rows.isEmpty {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                                ForEach(rows.indices, id: \.self) { i in
-                                    HStack {
-                                        Text(rows[i].name).lineLimit(1)
-                                        Spacer(minLength: 6)
-                                        Text(sensorText(rows[i])).monospacedDigit()
-                                            .foregroundStyle(kind == .temperature ? Color.red : Color.primary)
-                                    }
-                                    .font(.caption)
-                                }
-                            }
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                        }
+            header(.thermal)
+            if readings.isEmpty { Text("Waiting for data").foregroundStyle(.secondary) }
+            VStack(spacing: 4) {
+                ForEach(key.indices, id: \.self) { i in
+                    HStack {
+                        Text(key[i].0).foregroundStyle(.secondary)
+                        Spacer(minLength: 6)
+                        Text(key[i].1).monospacedDigit().foregroundStyle(key[i].2)
                     }
+                    .font(.system(size: 12))
                 }
             }
-            .frame(maxHeight: 380)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            Button { showAllSensors.toggle() } label: {
+                HStack {
+                    Text(showAllSensors ? "Hide all readings" : "Show all \(readings.count) readings")
+                    Spacer()
+                    Image(systemName: showAllSensors ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            if showAllSensors {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(readings.indices, id: \.self) { i in
+                            HStack {
+                                Text(readings[i].name).lineLimit(1)
+                                Spacer(minLength: 6)
+                                Text(sensorText(readings[i])).monospacedDigit()
+                                    .foregroundStyle(readings[i].kind == .temperature ? Color.red : Color.primary)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                    .padding(10)
+                }
+                .frame(maxHeight: 260)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
         }
     }
 

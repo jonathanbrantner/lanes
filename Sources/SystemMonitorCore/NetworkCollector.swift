@@ -1,6 +1,5 @@
 import Foundation
 import Darwin
-import SystemConfiguration
 
 /// Download and upload speed of one network connection, in bytes per second.
 public struct NetworkRate: Equatable {
@@ -67,14 +66,29 @@ public final class NetworkCollector {
         return out.sorted { $0.bsdName < $1.bsdName }
     }
 
-    /// "en0" -> "Wi-Fi", from the system's network interface list (read once).
-    private static func friendlyNames() -> [String: String] {
+    /// Pure and testable: "Hardware Port: Wi-Fi / Device: en0" pairs out of `networksetup -listallhardwareports`.
+    public static func parseHardwarePorts(_ text: String) -> [String: String] {
         var map: [String: String] = [:]
-        for interface in (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? [] {
-            guard let bsd = SCNetworkInterfaceGetBSDName(interface) as String?,
-                  let name = SCNetworkInterfaceGetLocalizedDisplayName(interface) as String? else { continue }
-            map[bsd] = name
+        var port: String?
+        for line in text.split(separator: "\n") {
+            if line.hasPrefix("Hardware Port: ") { port = String(line.dropFirst("Hardware Port: ".count)) }
+            else if line.hasPrefix("Device: "), let name = port { map[String(line.dropFirst("Device: ".count))] = name; port = nil }
         }
         return map
+    }
+
+    /// "en0" -> "Wi-Fi". Asked of the `networksetup` tool once instead of loading the SystemConfiguration
+    /// framework into Lanes, which cost about 20 MB of memory for the whole life of the app.
+    private static func friendlyNames() -> [String: String] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+        process.arguments = ["-listallhardwareports"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return parseHardwarePorts(String(decoding: data, as: UTF8.self))
     }
 }

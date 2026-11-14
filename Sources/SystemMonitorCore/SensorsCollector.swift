@@ -58,8 +58,10 @@ public final class SensorsCollector {
     /// "PMU tdie4" -> "Chip die sensor 4", "NAND CH0" -> "SSD (NAND)".
     public static func friendlyName(forHID name: String) -> String {
         if name.hasPrefix("NAND") { return "SSD (NAND)" }
-        if name.contains("tdie") { return "Chip die sensor " + name.drop { !$0.isNumber } }
-        if name.contains("tdev") { return "Device sensor " + name.drop { !$0.isNumber } }
+        // "PMU tdie4" -> "Chip die 4", "PMU2 tdie4" -> "Chip 2 die 4", "PMU tdev1" -> "Device 1".
+        let chip = name.hasPrefix("PMU2") ? "Chip 2 " : (name.hasPrefix("PMU") ? "Chip " : "")
+        if let range = name.range(of: "tdie") { return chip + "die " + name[range.upperBound...] }
+        if let range = name.range(of: "tdev") { return (chip.isEmpty ? "" : chip) + "device " + name[range.upperBound...] }
         if name.hasSuffix("tcal") { return "Calibration sensor" }
         return name
     }
@@ -108,5 +110,14 @@ public final class SensorsCollector {
             guard Self.isPlausible(sensors[i].celsius, kind: .temperature) else { return nil }
             return SensorReading(kind: .temperature, name: Self.friendlyName(forHID: name), value: sensors[i].celsius)
         }
+    }
+
+    /// Average, highest and count of the readings whose name starts with `prefix` (the many chip sensors
+    /// are shown as one line instead of hundreds).
+    public static func summary(_ readings: [SensorReading], kind: SensorReading.Kind, namePrefix: String)
+        -> (average: Double, maximum: Double, count: Int)? {
+        let values = readings.filter { $0.kind == kind && $0.name.contains(namePrefix) }.map(\.value)
+        guard let top = values.max() else { return nil }
+        return (values.reduce(0, +) / Double(values.count), top, values.count)
     }
 }

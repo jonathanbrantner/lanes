@@ -102,8 +102,8 @@ enum ScreenshotMode {
         s.deviceBatteries = [DeviceBattery(name: "AirPods Pro", parts: [("Left", 86), ("Right", 84), ("Case", 19)]),
                              DeviceBattery(name: "Keyboard", parts: [("", 62)])]
         s.sensors = [SensorReading(kind: .temperature, name: "SSD (NAND)", value: 38),
-                     SensorReading(kind: .temperature, name: "Chip die sensor 1", value: 44),
-                     SensorReading(kind: .temperature, name: "Chip die sensor 2", value: 46),
+                     SensorReading(kind: .temperature, name: "Chip die 1", value: 44),
+                     SensorReading(kind: .temperature, name: "Chip die 2", value: 46),
                      SensorReading(kind: .fan, name: "Fan speed", value: 1800),
                      SensorReading(kind: .fan, name: "Fan maximum", value: 4900),
                      SensorReading(kind: .power, name: "System power", value: 9.8),

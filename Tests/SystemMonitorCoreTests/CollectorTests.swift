@@ -308,7 +308,8 @@ final class CollectorTests: XCTestCase {
         XCTAssertNil(SensorsCollector.kind(forKey: "FNum"))
         XCTAssertNil(SensorsCollector.kind(forKey: "MSLD"))
         XCTAssertEqual(SensorsCollector.friendlyName(forHID: "NAND CH0"), "SSD (NAND)")
-        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "PMU tdie4"), "Chip die sensor 4")
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "PMU tdie4"), "Chip die 4")
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "PMU2 tdev3"), "Chip 2 device 3")
         XCTAssertTrue(SensorsCollector.isPlausible(40, kind: .temperature))
         XCTAssertFalse(SensorsCollector.isPlausible(400, kind: .temperature))
         XCTAssertFalse(SensorsCollector.isPlausible(.nan, kind: .power))
@@ -385,5 +386,32 @@ final class CollectorTests: XCTestCase {
         XCTAssertEqual(combined[0].cpuPercent, 8)
         XCTAssertEqual(combined[0].footprintBytes, 150)
         XCTAssertEqual(combined[0].appPath, "/Applications/Safari.app")
+    }
+
+    func testHardwarePortParsing() {
+        let text = """
+        Hardware Port: Ethernet
+        Device: en6
+        Ethernet Address: aa:bb
+
+        Hardware Port: Wi-Fi
+        Device: en0
+        Ethernet Address: cc:dd
+        """
+        let map = NetworkCollector.parseHardwarePorts(text)
+        XCTAssertEqual(map["en0"], "Wi-Fi")
+        XCTAssertEqual(map["en6"], "Ethernet")
+    }
+
+    func testSensorSummary() {
+        let r = [SensorReading(kind: .temperature, name: "Chip die 1", value: 30),
+                 SensorReading(kind: .temperature, name: "Chip 2 die 4", value: 40),
+                 SensorReading(kind: .temperature, name: "SSD (NAND)", value: 35),
+                 SensorReading(kind: .fan, name: "Chip die fan", value: 999)]
+        let s = SensorsCollector.summary(r, kind: .temperature, namePrefix: "die")
+        XCTAssertEqual(s?.count, 2)
+        XCTAssertEqual(s?.average, 35)
+        XCTAssertEqual(s?.maximum, 40)
+        XCTAssertNil(SensorsCollector.summary(r, kind: .power, namePrefix: "die"))
     }
 }
