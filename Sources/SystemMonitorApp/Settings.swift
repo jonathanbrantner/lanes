@@ -3,7 +3,7 @@ import SystemMonitorCore
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
-    case memory, drives, disk, power, cpu, gpu, thermal, network
+    case memory, drives, disk, power, cpu, gpu, thermal, network, devices
 
     var id: String { rawValue }
 
@@ -17,6 +17,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .gpu: "GPU"
         case .thermal: "Avg temp & fan"
         case .network: "Network"
+        case .devices: "Batteries"
         }
     }
 
@@ -30,6 +31,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .gpu: "display"
         case .thermal: "thermometer.medium"
         case .network: "network"
+        case .devices: "battery.75percent"
         }
     }
 
@@ -44,6 +46,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .gpu: .systemPurple
         case .thermal: .systemRed
         case .network: .systemCyan
+        case .devices: .systemPink
         }
     }
 
@@ -80,11 +83,17 @@ final class Settings: ObservableObject {
     var cpuCoresVisible: Bool { openDetail == .cpu }
     var gpuDetailVisible: Bool { openDetail == .gpu }
     /// The busiest-apps lists are only read while the CPU or Memory page is open.
+    /// The all-sensors list is only read while its page is open.
+    var sensorsVisible: Bool { openDetail == .thermal }
     var processesVisible: Bool { openDetail == .cpu || openDetail == .memory }
 
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {
         didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }
+    }
+    /// Memory, CPU and GPU as small meters instead of icons or names (the other items use icons).
+    @Published var menuBarMeters: Bool {
+        didSet { UserDefaults.standard.set(menuBarMeters, forKey: "menuBarMeters") }
     }
     /// Menu bar style: false = short names (MEM, CPU ...), true = coloured icons with shorter text.
     @Published var menuBarIcons: Bool {
@@ -126,12 +135,20 @@ final class Settings: ObservableObject {
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")
+        menuBarMeters = UserDefaults.standard.bool(forKey: "menuBarMeters")
         menuBarTemperatures = UserDefaults.standard.object(forKey: "menuBarTemperatures") as? Bool ?? true
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
         updateInterval = Self.intervals.contains(saved) ? saved : 1
         // The Avg temp & fan item is new: switch it on in the panel once for existing installs,
         // since those two numbers used to sit under Power.
+        // Network and Batteries are new in 2.1: show them in the panel once for existing installs.
+        if !UserDefaults.standard.bool(forKey: "migratedNetworkBatteries") {
+            UserDefaults.standard.set(true, forKey: "migratedNetworkBatteries")
+            if UserDefaults.standard.stringArray(forKey: Self.panelKey) != nil {
+                panelItems.formUnion([.network, .devices])
+            }
+        }
         if !UserDefaults.standard.bool(forKey: "migratedAvgTempItem") {
             UserDefaults.standard.set(true, forKey: "migratedAvgTempItem")
             if UserDefaults.standard.stringArray(forKey: Self.panelKey) != nil {

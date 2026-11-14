@@ -300,4 +300,42 @@ final class CollectorTests: XCTestCase {
         XCTAssertNotNil(mine)
         XCTAssertGreaterThan(mine?.footprintBytes ?? 0, 0)
     }
+
+    func testSensorKindsAndNames() {
+        XCTAssertEqual(SensorsCollector.kind(forKey: "Tp0g"), .temperature)
+        XCTAssertEqual(SensorsCollector.kind(forKey: "PSTR"), .power)
+        XCTAssertEqual(SensorsCollector.kind(forKey: "F0Ac"), .fan)
+        XCTAssertNil(SensorsCollector.kind(forKey: "FNum"))
+        XCTAssertNil(SensorsCollector.kind(forKey: "MSLD"))
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "NAND CH0"), "SSD (NAND)")
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "PMU tdie4"), "Chip die sensor 4")
+        XCTAssertTrue(SensorsCollector.isPlausible(40, kind: .temperature))
+        XCTAssertFalse(SensorsCollector.isPlausible(400, kind: .temperature))
+        XCTAssertFalse(SensorsCollector.isPlausible(.nan, kind: .power))
+    }
+
+    func testSensorsReadFindsReadings() {
+        let readings = SensorsCollector().read()
+        XCTAssertFalse(readings.isEmpty)
+        XCTAssertTrue(readings.contains { $0.kind == .temperature })
+    }
+
+    func testBluetoothBatteryParsing() {
+        let json = """
+        {"SPBluetoothDataType":[{"device_connected":[
+          {"AirPods":{"device_batteryLevelCase":"19%","device_batteryLevelLeft":"86%","device_batteryLevelRight":"80%"}},
+          {"Keyboard":{}},
+          {"Mouse":{"device_batteryLevelMain":"54%"}}]}]}
+        """.data(using: .utf8)!
+        let devices = DeviceBatteries.parseBluetooth(json: json)
+        XCTAssertEqual(devices.map(\.name), ["AirPods", "Mouse"])
+        XCTAssertEqual(devices[0].lowestPercent, 80)   // the case (19%) does not count
+        XCTAssertEqual(devices[1].parts.first?.percent, 54)
+        XCTAssertTrue(DeviceBatteries.parseBluetooth(json: Data()).isEmpty)
+        XCTAssertEqual(DeviceBatteries.percent("86%"), 86)
+    }
+
+    func testLaptopBatteryIsNilOrSane() {
+        if let b = DeviceBatteries.laptop() { XCTAssertTrue((0...100).contains(b.percent)) }
+    }
 }

@@ -11,6 +11,7 @@ extension Monitor {
         var cells: [IconCell] = []
         let on = settings.menuBarItems
         let icons = settings.menuBarIcons
+        let meters = settings.menuBarMeters
 
         /// One cell in the chosen style. `value` is the full text, `short` the Icons-style text,
         /// `samples` / `shortSamples` the widest strings for a steady width.
@@ -23,12 +24,18 @@ extension Monitor {
             case .power: "bolt.fill"
             case .thermal: "thermometer.medium"
             case .network: "network"
+            case .devices: "battery.75percent"
             case .cpu: "cpu"
             case .gpu: "display"
             }
         }
         func cell(_ item: MonitorItem, label: String, value: String, short: String? = nil,
-                  color: NSColor = .labelColor, samples: [String], shortSamples: [String]? = nil) -> IconCell {
+                  color: NSColor = .labelColor, samples: [String], shortSamples: [String]? = nil,
+                  fraction: Double? = nil) -> IconCell {
+            if meters, let fraction {
+                return IconCell(layout: .meter(fraction: fraction, meterColor: item.nsColor, value: short ?? value),
+                                color: color, widthSamples: shortSamples ?? Array(samples.dropFirst()))
+            }
             if icons {
                 return IconCell(layout: .icon(symbol: symbol(item), symbolColor: item.nsColor, value: short ?? value),
                                 color: color, widthSamples: shortSamples ?? Array(samples.dropFirst()))
@@ -46,7 +53,7 @@ extension Monitor {
             let gb = Double(ram.usedBytes) / 1_073_741_824
             cells.append(cell(.memory, label: "MEM", value: String(format: "%.1f GB", gb),
                               short: String(format: "%.1f", gb), color: color,
-                              samples: ["MEM", "88.8 GB"], shortSamples: ["88.8"]))
+                              samples: ["MEM", "88.8 GB"], shortSamples: ["88.8"], fraction: ram.usedFraction))
         }
         /// A drive: read on the first row, write on the second, in blue and orange. Same layout for the
         /// external drive and the internal disk; only the symbol (Icons) or name (Names) differs.
@@ -82,6 +89,10 @@ extension Monitor {
                 ? thermal?.ssdC.map { (settings.temperature($0, symbol: false), .systemRed) } : nil
             cells.append(driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
         }
+        if on.contains(.devices), let lowest = lowestBattery {
+            cells.append(cell(.devices, label: "BAT", value: "\(lowest)%", color: lowest <= 20 ? .systemRed : .labelColor,
+                              samples: ["BAT", "100%"], shortSamples: ["100%"], fraction: Double(lowest) / 100))
+        }
         if on.contains(.network), !network.isEmpty {
             cells.append(driveCell(.network, name: "NET", read: networkDown, write: networkUp, temp: nil))
         }
@@ -106,11 +117,17 @@ extension Monitor {
             let sample = temp == nil ? "100%" : "100% 212°"
             let percent = String(format: "%.0f%%", load * 100)
             var built = cell(item, label: label, value: percent, short: percent,
-                             samples: [label, sample], shortSamples: ["99%"])
+                             samples: [label, sample], shortSamples: ["99%"], fraction: load)
             if let temp { built.accent = (temp, .systemRed) }   // red temperature, like the panel
             cells.append(built)
         }
         return cells
+    }
+
+    /// The lowest battery level among the Mac's own battery and connected devices.
+    var lowestBattery: Int? {
+        let levels = deviceBatteries.map(\.lowestPercent) + (laptopBattery.map { [$0.percent] } ?? [])
+        return levels.min()
     }
 
     /// "0.7 MB/s"; pass `unit: ""` for the number alone (Icons style). GB/s keeps its unit, since

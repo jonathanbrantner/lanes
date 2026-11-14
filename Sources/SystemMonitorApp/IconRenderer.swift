@@ -13,6 +13,7 @@ struct IconCell {
         case labeled(label: String, value: String)   // tiny coloured label above a bigger value
         case twoRows(top: IconRow, bottom: IconRow)  // two equal lines (e.g. read / write)
         case icon(symbol: String, symbolColor: NSColor, value: String)  // coloured symbol, then the value
+        case meter(fraction: Double, meterColor: NSColor, value: String) // small vertical meter, then the value
     }
     let layout: Layout
     let color: NSColor                 // value text colour
@@ -32,6 +33,7 @@ struct IconCell {
 
     var isIconStyle: Bool {
         if case .icon = layout { return true }
+        if case .meter = layout { return true }
         return leadingSymbol != nil
     }
 }
@@ -94,6 +96,7 @@ enum IconRenderer {
         switch cell.layout {
         case .labeled(let label, _): base = "L\(label)"
         case .icon(let symbol, _, _): base = "I\(symbol)"
+        case .meter(_, _, let value): base = "M\(value.contains("GB") ? "gb" : "pct")"
         case .twoRows: base = "R\(cell.leadingSymbol?.name ?? cell.leadingLabel?.text ?? "")"
         }
         return base + (cell.accent == nil ? "" : "+")
@@ -120,11 +123,15 @@ enum IconRenderer {
         switch cell.layout {
         case .labeled: font = valueFont
         case .twoRows: font = rowFont
-        case .icon: font = valueFont
+        case .icon, .meter: font = valueFont
         }
         var w = cell.widthSamples.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         if case .labeled(let label, let value) = cell.layout {
             w = max(w, labelText(cell, label).size().width, valueText(cell, value).size().width)
+        }
+        if case .meter(_, _, let value) = cell.layout {
+            w = max(w, valueText(cell, value).size().width)
+            w += meterWidth + iconGap
         }
         if case .icon(_, _, let value) = cell.layout {
             w = max(w, valueText(cell, value).size().width)
@@ -180,6 +187,8 @@ enum IconRenderer {
                               width: size.width, height: size.height))
     }
 
+    private static let meterWidth: CGFloat = 6
+    private static let meterHeight: CGFloat = 16
     private static let iconWidth: CGFloat = 15
     private static let iconGap: CGFloat = 3
 
@@ -195,6 +204,16 @@ enum IconRenderer {
             }
             let s = valueText.size()
             valueText.draw(at: NSPoint(x: x + (width - s.width) / 2, y: label.isEmpty ? 4 : 1))
+        case .meter(let fraction, let meterColor, let value):
+            let text = valueText(cell, value)
+            text.draw(at: NSPoint(x: x + meterWidth + iconGap, y: (height - text.size().height) / 2))
+            let track = NSRect(x: x, y: (height - meterHeight) / 2, width: meterWidth, height: meterHeight)
+            NSColor.labelColor.withAlphaComponent(0.2).setFill()
+            NSBezierPath(roundedRect: track, xRadius: 2, yRadius: 2).fill()
+            var fill = track
+            fill.size.height = max(2, meterHeight * CGFloat(min(max(fraction, 0), 1)))
+            meterColor.setFill()
+            NSBezierPath(roundedRect: fill, xRadius: 2, yRadius: 2).fill()
         case .icon(let symbol, let symbolColor, let value):
             let text = valueText(cell, value)
             // Right after the symbol, so a short value never leaves a hole between them.

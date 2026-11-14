@@ -79,9 +79,10 @@ struct SettingsView: View {
                 }
                 Divider()
                 SettingsRow(title: "Menu bar style") {
-                    Picker("", selection: $settings.menuBarIcons) {
-                        Text("Names").tag(false)
-                        Text("Icons").tag(true)
+                    Picker("", selection: menuBarStyle) {
+                        Text("Names").tag(0)
+                        Text("Icons").tag(1)
+                        Text("Meters").tag(2)
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
@@ -119,6 +120,16 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    /// Menu bar look: 0 = names, 1 = icons, 2 = meters (icons plus small meters for memory, CPU and GPU).
+    private var menuBarStyle: Binding<Int> {
+        Binding(
+            get: { settings.menuBarMeters ? 2 : (settings.menuBarIcons ? 1 : 0) },
+            set: { style in
+                settings.menuBarMeters = style == 2
+                settings.menuBarIcons = style != 0
+            })
     }
 
     /// One control for "show temperatures" and the unit: 0 = off, 1 = °C, 2 = °F.
@@ -165,6 +176,10 @@ struct SettingsView: View {
                 definition("GPU sensors", "macOS gives no per-GPU-core numbers, so Renderer and Tiler load are shown, plus the GPU's separate temperature sensors (S1, S2 ...). Sensors are not cores.", .purple)
                 definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
                 definition("Fan", "Current fan speed in revolutions per minute.", nil)
+                definition("Network", "Download (blue) and upload (orange) per connection. Wi-Fi and Ethernet only; VPN and internal links are not counted twice.", .cyan)
+                definition("Drive corner", "Free space on the drive. It turns into a red SMART warning if macOS reports the drive as failing.", nil)
+                definition("Batteries", "Your Mac's battery (laptops) and connected Bluetooth devices that report one. The menu bar shows the lowest level.", .pink)
+                definition("Warm / Throttling", "macOS's own heat level. Throttling means it is slowing the Mac down to cool off.", .orange)
             }
         }
     }

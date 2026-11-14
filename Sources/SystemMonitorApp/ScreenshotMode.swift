@@ -13,7 +13,7 @@ enum ScreenshotMode {
 
         let monitor = Monitor(demo: demoState())
         monitor.settings.menuBarItems = [.memory, .drives]
-        monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu, .network]
+        monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu, .network, .devices]
         monitor.settings.hiddenDrives = []
 
         // Menu bar strip: the icon on a dark menu-bar-like background.
@@ -32,6 +32,10 @@ enum ScreenshotMode {
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-cpu.png")
         monitor.settings.openDetail = .gpu
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-gpu.png")
+        monitor.settings.openDetail = .thermal
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-sensors.png")
+        monitor.settings.openDetail = .network
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-network.png")
     }
 
     private static func renderPanel(_ panel: PanelView, to path: String) {
@@ -88,6 +92,17 @@ enum ScreenshotMode {
         s.topByMemory = [ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000),
                          ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000),
                          ProcessUsage(pid: 4, name: "Slack", cpuPercent: 1, footprintBytes: 620_000_000)]
+        s.deviceBatteries = [DeviceBattery(name: "AirPods Pro", parts: [("Left", 86), ("Right", 84), ("Case", 19)]),
+                             DeviceBattery(name: "Keyboard", parts: [("", 62)])]
+        s.sensors = [SensorReading(kind: .temperature, name: "SSD (NAND)", value: 38),
+                     SensorReading(kind: .temperature, name: "Chip die sensor 1", value: 44),
+                     SensorReading(kind: .temperature, name: "Chip die sensor 2", value: 46),
+                     SensorReading(kind: .fan, name: "Fan speed", value: 1800),
+                     SensorReading(kind: .fan, name: "Fan maximum", value: 4900),
+                     SensorReading(kind: .power, name: "System power", value: 9.8),
+                     SensorReading(kind: .power, name: "Processor package power", value: 2.7),
+                     SensorReading(kind: .voltage, name: "VD0R", value: 0.78),
+                     SensorReading(kind: .current, name: "ID0R", value: 0.35)]
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,
                             readBytesPerSec: 412e6, writeBytesPerSec: 186e6)
         let internalDisk = DriveRate(bsdName: "disk0", label: "Internal SSD", model: "Demo", isInternal: true,

@@ -82,7 +82,10 @@ struct PanelView: View {
                     }
                 }
             }
-            if visible.contains(.thermal) { thermalStrip }
+            if visible.contains(.devices) { batteriesStrip }
+            if visible.contains(.thermal) {
+                Button { detail = .thermal } label: { thermalStrip }.buttonStyle(.plain)
+            }
             HStack {
                 Button("Settings") { showSettings = true }
                 Spacer()
@@ -99,6 +102,38 @@ struct PanelView: View {
                 .buttonStyle(.borderless)
             section(for: item)
         }
+    }
+
+    /// The Mac's own battery (laptops) and connected Bluetooth devices with a battery.
+    private var batteriesStrip: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let battery = monitor.laptopBattery {
+                batteryRow("This Mac", [("", battery.percent)],
+                           note: battery.isCharging ? "charging" : (battery.onPower ? "on power" : ""))
+            }
+            ForEach(monitor.deviceBatteries, id: \.name) { device in
+                batteryRow(device.name, device.parts.map { ($0.label, $0.percent) }, note: "")
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func batteryRow(_ name: String, _ parts: [(String, Int)], note: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "battery.75percent").foregroundStyle(MonitorItem.devices.color)
+            Text(name).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 6)
+            if !note.isEmpty { Text(note).foregroundStyle(.secondary) }
+            ForEach(parts.indices, id: \.self) { i in
+                let part = parts[i]
+                Text((part.0.isEmpty ? "" : String(part.0.prefix(1)) + " ") + "\(part.1)%")
+                    .monospacedDigit()
+                    .foregroundStyle(part.1 <= 20 ? Color.red : Color.primary)
+            }
+        }
+        .font(.system(size: 11))
     }
 
     /// Average temperature and fan speed as one line under the tiles.
@@ -118,6 +153,7 @@ struct PanelView: View {
                 Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
             }
             Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
@@ -163,15 +199,12 @@ struct PanelView: View {
         return drive.isInternal ? volumes.values.filter(\.isInternal).max { $0.totalBytes < $1.totalBytes } : nil
     }
 
-    /// "SMART ✓" when macOS verifies the drive, "SMART ✗" in red when it reports failing; nothing otherwise.
-    private func smartMark(_ bsd: String) -> String? {
-        switch monitor.smart[bsd] {
-        case .verified: "SMART ✓"
-        case .failing: "SMART ✗"
-        case nil: nil
-        }
+    /// Top right of a drive tile: "SMART ✗" in red if macOS reports the drive failing, else the free space ("412 GB").
+    private func driveCorner(_ drive: DriveRate) -> (text: String?, color: Color) {
+        if monitor.smart[drive.bsdName] == .failing { return ("SMART ✗", .red) }
+        guard let space = space(for: drive) else { return (nil, .secondary) }
+        return (ByteCountFormatter.string(fromByteCount: Int64(space.freeBytes), countStyle: .file), .secondary)
     }
-    private func smartColor(_ bsd: String) -> Color { monitor.smart[bsd] == .failing ? .red : .green }
 
     private func tileData(_ item: MonitorItem) -> TileData? {
         switch item {
@@ -210,8 +243,8 @@ struct PanelView: View {
                             name: drives.count == 1 ? first.label : "\(drives.count) drives", color: item.color,
                             big: Monitor.speed(monitor.externalRead + monitor.externalWrite),
                             small: "", rates: rates(monitor.externalRead, monitor.externalWrite),
-                            corner: smartMark(first.bsdName), cornerColor: smartColor(first.bsdName),
-                            footnote: space(for: first)?.freeText, history: driveHistory(first))
+                            corner: driveCorner(first).text, cornerColor: driveCorner(first).color,
+                            history: driveHistory(first))
         case .disk:
             guard let drive = monitor.internalDrive else {
                 return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
@@ -220,9 +253,9 @@ struct PanelView: View {
             return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
                             big: Monitor.speed(drive.readMBps + drive.writeMBps),
                             small: "", rates: rates(drive.readMBps, drive.writeMBps),
-                            corner: shownTemp(monitor.thermal?.ssdC) ?? smartMark(drive.bsdName),
-                            cornerColor: shownTemp(monitor.thermal?.ssdC) == nil ? smartColor(drive.bsdName) : .red,
-                            footnote: space(for: drive)?.freeText, history: driveHistory(drive))
+                            corner: shownTemp(monitor.thermal?.ssdC) ?? driveCorner(drive).text,
+                            cornerColor: shownTemp(monitor.thermal?.ssdC) == nil ? driveCorner(drive).color : .red,
+                            history: driveHistory(drive))
         case .network:
             guard !monitor.network.isEmpty else {
                 return TileData(id: item, symbol: item.symbol, name: "Network", color: item.color,
@@ -233,7 +266,7 @@ struct PanelView: View {
                             big: Monitor.speed(monitor.networkDown + monitor.networkUp),
                             small: "", rates: rates(monitor.networkDown, monitor.networkUp),
                             corner: nil, history: zoomed(combined, minSpan: 1, floor: 0, padding: 0.5))
-        case .thermal:
+        case .thermal, .devices:
             return nil
         }
     }
@@ -245,6 +278,7 @@ struct PanelView: View {
             case .gpu: return monitor.gpu != nil
             case .power: return monitor.power != nil
             case .network: return true
+            case .devices: return !monitor.deviceBatteries.isEmpty || monitor.laptopBattery != nil
             case .thermal: return monitor.thermal?.averageC != nil || !(monitor.thermal?.fans.isEmpty ?? true)
             default: return true
             }
@@ -256,6 +290,7 @@ struct PanelView: View {
         switch item {
         case .memory: memorySection
         case .network: networkSection
+        case .thermal: sensorsSection
         case .cpu: percentSection(.cpu, value: monitor.cpu,
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.cpuHistory),
@@ -267,6 +302,57 @@ struct PanelView: View {
                                   temp: shownTemp(monitor.thermal?.gpuC),
                                   detail: { gpuDetailView })
         default: EmptyView()
+        }
+    }
+
+    // MARK: Sensors
+
+    /// Every temperature, fan, power, voltage and current reading, grouped.
+    private var sensorsSection: some View {
+        let groups: [(SensorReading.Kind, String)] = [(.temperature, "Temperatures"), (.fan, "Fans"),
+                                                      (.power, "Power"), (.voltage, "Voltage"), (.current, "Current")]
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                header(.thermal)
+                Spacer()
+                Text("\(monitor.sensors.count) readings").font(.caption).foregroundStyle(.secondary)
+            }
+            if monitor.sensors.isEmpty { Text("Waiting for data").foregroundStyle(.secondary) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(groups, id: \.0) { kind, title in
+                        let rows = monitor.sensors.filter { $0.kind == kind }
+                        if !rows.isEmpty {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                ForEach(rows.indices, id: \.self) { i in
+                                    HStack {
+                                        Text(rows[i].name).lineLimit(1)
+                                        Spacer(minLength: 6)
+                                        Text(sensorText(rows[i])).monospacedDigit()
+                                            .foregroundStyle(kind == .temperature ? Color.red : Color.primary)
+                                    }
+                                    .font(.caption)
+                                }
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 380)
+        }
+    }
+
+    private func sensorText(_ r: SensorReading) -> String {
+        switch r.kind {
+        case .temperature: settings.temperature(r.value)
+        case .fan: String(format: "%.0f rpm", r.value)
+        case .power: String(format: "%.2f W", r.value)
+        case .voltage: String(format: "%.2f V", r.value)
+        case .current: String(format: "%.2f A", r.value)
         }
     }
 

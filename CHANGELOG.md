@@ -11,6 +11,16 @@ New interface
 - Read and write arrows on the drive tiles match the menu bar: blue down, orange up.
 - Settings is simpler: icon buttons for what shows in the menu bar and the panel, grouped Display and General sections, one `Off | °C | °F` control, and a separate page for the chip choice and definitions.
 
+More in this release
+- Network: download and upload per connection (Wi-Fi, Ethernet), with a tile, a page with a graph per connection, and a menu bar cell.
+- Drives show free space on the tile, and a red "SMART" warning if macOS reports a drive failing.
+- Batteries: the Mac's own battery on laptops and connected Bluetooth devices (AirPods, mouse, keyboard) in one strip.
+- Busiest apps by CPU on the CPU page and by memory on the Memory page (read only while that page is open).
+- Sensors page (click the Avg temp strip): every temperature, fan, power, voltage and current reading the Mac offers, and a warning when macOS is throttling.
+- Menu bar style: Names, Icons or Meters (small bars for memory, CPU and GPU), with red temperatures, a switch for temperatures in the menu bar, and steady widths so the bar does not bounce.
+- Graph hover: hover a graph on a page to see the exact value and how long ago.
+- Settings: "Check accuracy" compares the memory numbers with vm_stat; the GPU tile shows the GPU core count; Memory page shows compressed memory over time.
+
 New features
 - Temperatures (CPU, GPU, SSD, and memory where the chip has a sensor), in °C or °F, plus fan speed and an average, read without admin rights. Sensor tables for M1 to M6 with an automatic chip choice.
 - Cores: the CPU page shows one card per core class (Super, Performance, Efficiency) with its temperature and a small box with its own last-minute graph for every core. The GPU page shows Device, Renderer and Tiler load, GPU power, GPU memory, and a graph for each GPU temperature sensor. Per-class temperatures are checked on the M6 only.

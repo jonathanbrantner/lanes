@@ -31,6 +31,9 @@ struct MonitorState {
     var powerHistory: [Double] = []     // watts
     var driveHistory: [String: [DriveSample]] = [:]
     var network: [NetworkRate] = []
+    var deviceBatteries: [DeviceBattery] = []
+    var laptopBattery: LaptopBattery?
+    var sensors: [SensorReading] = []      // only while the sensors page is open
     var topByCPU: [ProcessUsage] = []      // only while the CPU or Memory page is open
     var topByMemory: [ProcessUsage] = []
     var thermalPressure: ProcessInfo.ThermalState = .nominal
@@ -84,7 +87,7 @@ final class Monitor: ObservableObject {
                           interval: settings.updateInterval, chip: settings.chip,
                           temperatures: settings.showTemperatures,
                           cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible,
-                          processes: settings.processesVisible)
+                          processes: settings.processesVisible, sensors: settings.sensorsVisible)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -110,6 +113,9 @@ final class Monitor: ObservableObject {
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
     var network: [NetworkRate] { state.network }
     var networkHistory: [String: [DriveSample]] { state.networkHistory }
+    var deviceBatteries: [DeviceBattery] { state.deviceBatteries }
+    var laptopBattery: LaptopBattery? { state.laptopBattery }
+    var sensors: [SensorReading] { state.sensors }
     var topByCPU: [ProcessUsage] { state.topByCPU }
     var topByMemory: [ProcessUsage] { state.topByMemory }
     var thermalPressure: ProcessInfo.ThermalState { state.thermalPressure }
@@ -147,6 +153,9 @@ private final class Sampler {
     private let diskSpace = DiskSpaceCollector()
     private let processCollector = ProcessCollector()
     private var processes = false
+    private var sensors = false
+    private var batteriesLoaded = false
+    private lazy var sensorsCollector = SensorsCollector()
     private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
     private var chip = ChipFamily.detect()
     private var temperatures = true
@@ -168,12 +177,14 @@ private final class Sampler {
     }
 
     func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool,
-                   cpuCores: Bool, gpuDetail: Bool, processes: Bool) {
+                   cpuCores: Bool, gpuDetail: Bool, processes: Bool, sensors: Bool) {
         queue.async { [weak self] in
             guard let self else { return }
             let coresOpened = cpuCores && !self.cpuCores
             let gpuOpened = gpuDetail && !self.gpuDetail
             self.shown = shown
+            let sensorsOpened = sensors && !self.sensors
+            self.sensors = sensors
             let processesOpened = processes && !self.processes
             if processes != self.processes { self.processCollector.reset(); self.processes = processes }
             if processesOpened { _ = self.processCollector.sample() }   // baseline for the first CPU numbers
@@ -183,7 +194,7 @@ private final class Sampler {
             // Opening a detail view: take the baseline now and show real numbers after 1 s,
             // instead of "Waiting for data" for a whole update interval.
             if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
-            if coresOpened || gpuOpened || processesOpened {
+            if coresOpened || gpuOpened || processesOpened || sensorsOpened {
                 self.detailRefresh?.cancel()   // pages opened quickly one after another: keep only the last
                 let work = DispatchWorkItem { [weak self] in self?.refreshDetail() }
                 self.detailRefresh = work
@@ -269,9 +280,34 @@ private final class Sampler {
         sampleNetwork()
         sampleDiskSpace()
         sampleProcesses()
+        sampleSensors()
+        sampleBatteries()
         state.thermalPressure = ProcessInfo.processInfo.thermalState
 
         onSample?(state)
+    }
+
+    /// Device and laptop batteries change slowly: once a minute, only while the item is shown.
+    private func sampleBatteries() {
+        guard shown.contains(.devices) else {
+            state.deviceBatteries = []
+            state.laptopBattery = nil
+            batteriesLoaded = false
+            return
+        }
+        let every = max(1, Int((60.0 / interval).rounded()))
+        guard (tickCount - 1) % every == 0 || !batteriesLoaded else { return }
+        batteriesLoaded = true
+        state.deviceBatteries = DeviceBatteries.bluetooth()
+        state.laptopBattery = DeviceBatteries.laptop()
+    }
+
+    /// Every reading this Mac offers, every ~3 s, only while the sensors page is open.
+    private func sampleSensors() {
+        guard sensors else { state.sensors = []; return }
+        let every = max(1, Int((3.0 / interval).rounded(.up)))
+        guard (tickCount - 1) % every == 0 || state.sensors.isEmpty else { return }
+        state.sensors = sensorsCollector.read()
     }
 
     /// Busiest apps, every ~3 s, only while the CPU or Memory page is open.
@@ -339,6 +375,7 @@ private final class Sampler {
     private func refreshDetail() {
         sampleCores()
         sampleProcesses()
+        sampleSensors()
         state.gpuDetail = (gpuDetail && shown.contains(.gpu)) ? gpu.details() : nil
         state.thermal = nil   // forces a thermal read now, so the new groups appear with the cores
         sampleThermal()
