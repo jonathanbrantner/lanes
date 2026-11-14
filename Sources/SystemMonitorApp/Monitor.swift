@@ -381,7 +381,9 @@ private final class Sampler {
         }
         let every = max(1, Int((3.0 / interval).rounded(.up)))
         guard (tickCount - 1) % every == 0 || state.topByCPU.isEmpty else { return }
-        let all = processCollector.sample()
+        // Lanes itself is left out: opening the panel is a short burst that would show as a big number here.
+        let me = getpid()
+        let all = processCollector.sample().filter { $0.pid != me }
         state.topByCPU = Array(all.filter { $0.cpuPercent > 0 }.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))
         state.topByMemory = Array(all.sorted { $0.footprintBytes > $1.footprintBytes }.prefix(5))
     }
