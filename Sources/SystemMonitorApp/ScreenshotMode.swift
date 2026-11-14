@@ -26,6 +26,10 @@ enum ScreenshotMode {
         }
         write(strip, scale: 2, to: "\(outputDir)/menubar.png")
 
+        monitor.settings.panelList = true
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-rows.png")
+        monitor.settings.panelList = false
+
         // Panels: the real SwiftUI views on a rounded dark card, like the popover.
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel.png")
         monitor.settings.openDetail = .cpu

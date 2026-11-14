@@ -5,7 +5,7 @@
 Version 2.0 redesigns the panel and adds temperatures, per-core details and a simpler Settings screen.
 
 New interface
-- The panel is a grid of tiles (CPU, GPU, Memory, Power, Drives, Disk), each with one big number, a short caption and a small graph. Average temperature, batteries and the rest are tiles in the same grid. About half the height of the old panel.
+- The panel is a grid of tiles (CPU, GPU, Memory, Power, Drives, Disk), each with one big number, a short caption and a small graph. Average temperature, batteries and the rest are tiles in the same grid (or one compact row each: Settings, Panel, Rows). About half the height of the old panel.
 - Click the CPU, GPU or Memory tile for its full page. The other tiles show everything there is on the tile itself.
 - Graphs zoom to their own recent range with 10% headroom, so they always show detail and a spike never looks like it hits the maximum.
 - Read and write arrows on the drive tiles match the menu bar: blue down, orange up.

@@ -75,10 +75,20 @@ struct PanelView: View {
                 Text("Nothing selected. Open Settings to choose what to show.")
                     .foregroundStyle(.secondary)
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                ForEach(tiles, id: \.self) { item in
-                    if let data = tileData(item) {
-                        Tile(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+            if settings.panelList {
+                VStack(spacing: 6) {
+                    ForEach(tiles, id: \.self) { item in
+                        if let data = tileData(item) {
+                            ListRow(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+                        }
+                    }
+                }
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    ForEach(tiles, id: \.self) { item in
+                        if let data = tileData(item) {
+                            Tile(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+                        }
                     }
                 }
             }

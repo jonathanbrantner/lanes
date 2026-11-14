@@ -352,4 +352,10 @@ final class CollectorTests: XCTestCase {
         XCTAssertNil(snap.calibration(forActivityMonitorGB: 40))   // not a calibration, a typo
         XCTAssertNil(snap.calibration(forActivityMonitorGB: 0))
     }
+
+    func testLogitechNameShortening() {
+        XCTAssertEqual(LogitechReceiver.shortName("G502 LIGHTSPEED Wireless Gaming Mouse"), "G502 LIGHTSPEED Mouse")
+        XCTAssertEqual(LogitechReceiver.shortName("MX Keys Mini"), "MX Keys Mini")
+        XCTAssertEqual(LogitechReceiver.shortName("Wireless"), "Wireless")
+    }
 }

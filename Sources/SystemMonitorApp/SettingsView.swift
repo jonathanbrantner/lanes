@@ -83,9 +83,6 @@ struct SettingsView: View {
                 SettingsRow(title: "Keyboard and mouse batteries") {
                     Toggle("", isOn: $settings.readBluetoothBatteries).toggleStyle(.checkbox).labelsHidden()
                 }
-                Text("Reads Logitech and other Bluetooth keyboards and mice, including ones on a Logitech USB receiver. macOS may ask for Bluetooth or input access the first time.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, monitor.logitechStatus.hasPrefix("open failed") ? 2 : 8)
                 if monitor.logitechStatus.hasPrefix("open failed") {
                     HStack {
                         Text("Mouse blocked: allow Lanes under Input Monitoring.").font(.caption).foregroundStyle(.orange)
@@ -95,6 +92,14 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.bottom, 8)
+                }
+                Divider()
+                SettingsRow(title: "Panel") {
+                    Picker("", selection: $settings.panelList) {
+                        Text("Grid").tag(false)
+                        Text("Rows").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
                 Divider()
                 SettingsRow(title: "Menu bar style") {

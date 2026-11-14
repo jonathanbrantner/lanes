@@ -100,6 +100,10 @@ final class Settings: ObservableObject {
         didSet { UserDefaults.standard.set(Double(memoryCalibration), forKey: "memoryCalibration") }
     }
     /// Memory, CPU and GPU as small meters instead of icons or names (the other items use icons).
+    /// Panel as one compact row per item instead of a grid of tiles.
+    @Published var panelList: Bool {
+        didSet { UserDefaults.standard.set(panelList, forKey: "panelList") }
+    }
     @Published var menuBarMeters: Bool {
         didSet { UserDefaults.standard.set(menuBarMeters, forKey: "menuBarMeters") }
     }
@@ -144,6 +148,7 @@ final class Settings: ObservableObject {
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")
         menuBarMeters = UserDefaults.standard.bool(forKey: "menuBarMeters")
+        panelList = UserDefaults.standard.bool(forKey: "panelList")
         memoryCalibration = Int64(UserDefaults.standard.double(forKey: "memoryCalibration"))
         readBluetoothBatteries = UserDefaults.standard.bool(forKey: "readBluetoothBatteries")
         menuBarTemperatures = UserDefaults.standard.object(forKey: "menuBarTemperatures") as? Bool ?? true

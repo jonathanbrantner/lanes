@@ -24,6 +24,13 @@ public enum LogitechReceiver {
     /// What the last read did, for diagnosing a missing device: "open ok, 1 receiver, 1 device".
     public nonisolated(unsafe) static var lastStatus = "not read yet"
 
+    /// "G502 LIGHTSPEED Wireless Gaming Mouse" -> "G502 LIGHTSPEED Mouse": drop filler words so the name fits.
+    public static func shortName(_ name: String) -> String {
+        let filler: Set<String> = ["wireless", "gaming", "bluetooth", "advanced", "ergonomic"]
+        let words = name.split(separator: " ").filter { !filler.contains($0.lowercased()) }
+        return words.isEmpty ? name : words.joined(separator: " ")
+    }
+
     private final class Inbox { var reports: [[UInt8]] = [] }
 
     public static func batteries() -> [DeviceBattery] {
@@ -105,7 +112,7 @@ public enum LogitechReceiver {
                         text += part
                         offset = UInt8(min(255, text.count))
                     }
-                    if !text.isEmpty { name = String(decoding: text, as: UTF8.self) }
+                    if !text.isEmpty { name = shortName(String(decoding: text, as: UTF8.self)) }
                 }
                 out.append(DeviceBattery(name: name, parts: [("", min(100, max(0, percent)))]))
             }

@@ -94,6 +94,44 @@ struct Tile: View {
     }
 }
 
+/// The same data as one compact row (Settings > Panel > Rows): icon, name, number, and an arrow if it opens.
+struct ListRow: View {
+    let data: TileData
+    var action: (() -> Void)?
+
+    var body: some View {
+        if let action { Button(action: action) { content }.buttonStyle(.plain) } else { content }
+    }
+
+    private var content: some View {
+        HStack(spacing: 8) {
+            Image(systemName: data.symbol).font(.system(size: 12)).foregroundStyle(data.color).frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(data.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                if let rates = data.rates {
+                    Text("↓ \(rates.read)  ↑ \(rates.write)").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                } else if !data.small.isEmpty {
+                    Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 6)
+            if let corner = data.corner, corner.contains("°") {
+                Text(corner).font(.system(size: 10, design: .monospaced)).foregroundStyle(data.cornerColor)
+            }
+            Text(data.big).font(.system(size: 14, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            if action != nil {
+                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
+            } else {
+                Color.clear.frame(width: 8)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 /// A small box for one core or one sensor: its name, its value and its own little graph.
 struct MiniBox: View {
     let title: String
