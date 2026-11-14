@@ -19,6 +19,7 @@ More in this release
 - Sensors page (click the Avg temp strip): every temperature, fan, power, voltage and current reading the Mac offers, and a warning when macOS is throttling.
 - Menu bar style: Names, Icons or Meters (small bars for memory, CPU and GPU), with red temperatures, a switch for temperatures in the menu bar, and steady widths so the bar does not bounce.
 - Graph hover: hover a graph on a page to see the exact value and how long ago.
+- Settings: type what Activity Monitor shows and "Calibrate" corrects Memory used for that Mac (Reset undoes it). Optional "Keyboard and mouse batteries" reads Bluetooth LE devices such as the Logitech MX Keys (macOS asks for Bluetooth access; Logitech mice on a USB receiver cannot be read).
 - Settings: "Check accuracy" compares the memory numbers with vm_stat; the GPU tile shows the GPU core count; Memory page shows compressed memory over time.
 
 New features

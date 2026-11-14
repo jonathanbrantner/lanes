@@ -338,4 +338,18 @@ final class CollectorTests: XCTestCase {
     func testLaptopBatteryIsNilOrSane() {
         if let b = DeviceBatteries.laptop() { XCTAssertTrue((0...100).contains(b.percent)) }
     }
+
+    func testMemoryCalibration() {
+        let gb = UInt64(1_073_741_824)
+        let snap = RAMSnapshot(appBytes: 8 * gb, wiredBytes: 2 * gb, compressedBytes: gb, cachedBytes: 5 * gb,
+                               totalBytes: 24 * gb, swapUsedBytes: 0, pressure: .normal,
+                               freeBytes: 6 * gb, fileBackedBytes: 5 * gb)
+        XCTAssertEqual(snap.usedBytes, 13 * gb)
+        let offset = snap.calibration(forActivityMonitorGB: 12.5)
+        XCTAssertEqual(offset, -Int64(gb) / 2)
+        XCTAssertEqual(snap.withCalibration(offset!).usedBytes, 12 * gb + gb / 2)
+        XCTAssertEqual(snap.withCalibration(offset!).withCalibration(0).usedBytes, 13 * gb)
+        XCTAssertNil(snap.calibration(forActivityMonitorGB: 40))   // not a calibration, a typo
+        XCTAssertNil(snap.calibration(forActivityMonitorGB: 0))
+    }
 }

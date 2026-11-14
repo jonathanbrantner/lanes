@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var showMore = false
     @State private var accuracy: [AccuracyLine]?
     @State private var accuracyFailed = false
+    @State private var calibrationText = ""
+    @State private var calibrationRefused = false
 
     var body: some View {
         Group {
@@ -77,6 +79,13 @@ struct SettingsView: View {
                         Toggle("", isOn: $settings.menuBarTemperatures).toggleStyle(.checkbox).labelsHidden()
                     }
                 }
+                Divider()
+                SettingsRow(title: "Keyboard and mouse batteries") {
+                    Toggle("", isOn: $settings.readBluetoothBatteries).toggleStyle(.checkbox).labelsHidden()
+                }
+                Text("Reads Logitech and other Bluetooth keyboards and mice. macOS asks for Bluetooth access the first time.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, 8)
                 Divider()
                 SettingsRow(title: "Menu bar style") {
                     Picker("", selection: menuBarStyle) {
@@ -196,6 +205,19 @@ struct SettingsView: View {
             }
             Text("Compares the memory numbers with macOS's own vm_stat. Activity Monitor uses the same counters.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Text("Activity Monitor says").font(.caption)
+                TextField("GB", text: $calibrationText).frame(width: 56).textFieldStyle(.roundedBorder)
+                Button("Calibrate") { calibrate() }.disabled(Double(calibrationText.replacingOccurrences(of: ",", with: ".")) == nil)
+                if settings.memoryCalibration != 0 { Button("Reset") { settings.memoryCalibration = 0 } }
+            }
+            if settings.memoryCalibration != 0 {
+                Text(String(format: "Memory used is adjusted by %+.2f GB for this Mac.", Double(settings.memoryCalibration) / 1_073_741_824))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if calibrationRefused {
+                Text("That is too far from Lanes' number to be a calibration.").font(.caption).foregroundStyle(.orange)
+            }
             if let lines = accuracy {
                 ForEach(lines, id: \.name) { line in
                     HStack {
@@ -213,8 +235,17 @@ struct SettingsView: View {
         }
     }
 
+    /// Makes Lanes' Memory used equal the number typed from Activity Monitor, for this Mac.
+    private func calibrate() {
+        guard let ram = monitor.ram, let gb = Double(calibrationText.replacingOccurrences(of: ",", with: ".")),
+              let offset = ram.calibration(forActivityMonitorGB: gb) else { calibrationRefused = true; return }
+        calibrationRefused = false
+        settings.memoryCalibration = offset
+        calibrationText = ""
+    }
+
     private func runAccuracyCheck() {
-        guard let ram = monitor.ram else { accuracyFailed = true; return }
+        guard let ram = monitor.ram?.withCalibration(0) else { accuracyFailed = true; return }
         accuracyFailed = false
         DispatchQueue.global(qos: .userInitiated).async {
             let result = AccuracyCheck.run(snapshot: ram)

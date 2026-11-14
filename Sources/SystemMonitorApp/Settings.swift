@@ -91,6 +91,14 @@ final class Settings: ObservableObject {
     @Published var useFahrenheit: Bool {
         didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }
     }
+    /// Also read keyboard and mouse batteries over Bluetooth LE (asks macOS for Bluetooth access).
+    @Published var readBluetoothBatteries: Bool {
+        didSet { UserDefaults.standard.set(readBluetoothBatteries, forKey: "readBluetoothBatteries") }
+    }
+    /// Correction to Memory used, in bytes, set from "Calibrate" in Settings (0 = none).
+    @Published var memoryCalibration: Int64 {
+        didSet { UserDefaults.standard.set(Double(memoryCalibration), forKey: "memoryCalibration") }
+    }
     /// Memory, CPU and GPU as small meters instead of icons or names (the other items use icons).
     @Published var menuBarMeters: Bool {
         didSet { UserDefaults.standard.set(menuBarMeters, forKey: "menuBarMeters") }
@@ -136,6 +144,8 @@ final class Settings: ObservableObject {
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")
         menuBarMeters = UserDefaults.standard.bool(forKey: "menuBarMeters")
+        memoryCalibration = Int64(UserDefaults.standard.double(forKey: "memoryCalibration"))
+        readBluetoothBatteries = UserDefaults.standard.bool(forKey: "readBluetoothBatteries")
         menuBarTemperatures = UserDefaults.standard.object(forKey: "menuBarTemperatures") as? Bool ?? true
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)

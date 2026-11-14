@@ -55,6 +55,32 @@ final class Monitor: ObservableObject {
 
     nonisolated static let historyLength = 60
 
+    /// Keyboard and mouse batteries from `BLEBatteryReader` (opt-in), refreshed about once a minute
+    /// while the Batteries item is shown.
+    @Published private(set) var bleBatteries: [DeviceBattery] = []
+    private let bleReader = BLEBatteryReader()
+    private var bleTimer: Timer?
+
+    /// Starts or stops the Bluetooth LE reads to match the settings.
+    func updateBLEReading() {
+        let wanted = settings.readBluetoothBatteries && (settings.menuBarItems.union(settings.panelItems)).contains(.devices)
+        if wanted, bleTimer == nil {
+            readBLE()
+            bleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.readBLE() }
+            }
+        } else if !wanted, bleTimer != nil {
+            bleTimer?.invalidate()
+            bleTimer = nil
+            bleReader.stop()
+            bleBatteries = []
+        }
+    }
+
+    private func readBLE() {
+        bleReader.read { [weak self] devices in self?.bleBatteries = devices }
+    }
+
     private let sampler: Sampler?
     private var cancellables = Set<AnyCancellable>()
 
@@ -83,11 +109,13 @@ final class Monitor: ObservableObject {
     }
 
     private func applySettings() {
+        updateBLEReading()
         sampler?.configure(shown: settings.menuBarItems.union(settings.panelItems),
                           interval: settings.updateInterval, chip: settings.chip,
                           temperatures: settings.showTemperatures,
                           cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible,
-                          processes: settings.processesVisible, sensors: settings.sensorsVisible)
+                          processes: settings.processesVisible, sensors: settings.sensorsVisible,
+                          calibration: settings.memoryCalibration)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -113,7 +141,11 @@ final class Monitor: ObservableObject {
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
     var network: [NetworkRate] { state.network }
     var networkHistory: [String: [DriveSample]] { state.networkHistory }
-    var deviceBatteries: [DeviceBattery] { state.deviceBatteries }
+    /// Apple-listed devices plus, if switched on, keyboards and mice read over Bluetooth LE.
+    var deviceBatteries: [DeviceBattery] {
+        let known = Set(state.deviceBatteries.map(\.name))
+        return (state.deviceBatteries + bleBatteries.filter { !known.contains($0.name) }).sorted { $0.name < $1.name }
+    }
     var laptopBattery: LaptopBattery? { state.laptopBattery }
     var sensors: [SensorReading] { state.sensors }
     var topByCPU: [ProcessUsage] { state.topByCPU }
@@ -154,6 +186,7 @@ private final class Sampler {
     private let processCollector = ProcessCollector()
     private var processes = false
     private var sensors = false
+    private var calibration: Int64 = 0
     private var batteriesLoaded = false
     private lazy var sensorsCollector = SensorsCollector()
     private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
@@ -177,12 +210,13 @@ private final class Sampler {
     }
 
     func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool,
-                   cpuCores: Bool, gpuDetail: Bool, processes: Bool, sensors: Bool) {
+                   cpuCores: Bool, gpuDetail: Bool, processes: Bool, sensors: Bool, calibration: Int64) {
         queue.async { [weak self] in
             guard let self else { return }
             let coresOpened = cpuCores && !self.cpuCores
             let gpuOpened = gpuDetail && !self.gpuDetail
             self.shown = shown
+            self.calibration = calibration
             let sensorsOpened = sensors && !self.sensors
             self.sensors = sensors
             let processesOpened = processes && !self.processes
@@ -222,7 +256,7 @@ private final class Sampler {
 
         if shown.contains(.memory) {
             if tickCount % 5 == 1 { ram.refreshSwap() }      // swap changes slowly
-            state.ram = ram.snapshot()
+            state.ram = ram.snapshot()?.withCalibration(calibration)
             push(&state.ramHistory, state.ram?.usedFraction)
             push(&state.compressedHistory, state.ram.map { Double($0.compressedBytes) })
         }

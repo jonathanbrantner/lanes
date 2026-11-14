@@ -37,6 +37,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>Lanes reads the battery level of your connected Bluetooth keyboard and mouse. Nothing is sent anywhere.</string>
 </dict>
 </plist>
 PLIST

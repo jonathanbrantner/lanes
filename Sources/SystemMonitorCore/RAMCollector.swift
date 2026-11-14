@@ -17,10 +17,12 @@ public struct RAMSnapshot {
     public let pressure: MemoryPressure
     public let freeBytes: UInt64         // pages on the free list
     public let fileBackedBytes: UInt64   // file cache that can be dropped at any time
+    /// A per-Mac correction the user can set in Settings (type what Activity Monitor shows). 0 = none.
+    public let calibrationBytes: Int64
 
     public init(appBytes: UInt64, wiredBytes: UInt64, compressedBytes: UInt64, cachedBytes: UInt64,
                 totalBytes: UInt64, swapUsedBytes: UInt64, pressure: MemoryPressure,
-                freeBytes: UInt64, fileBackedBytes: UInt64) {
+                freeBytes: UInt64, fileBackedBytes: UInt64, calibrationBytes: Int64 = 0) {
         self.appBytes = appBytes
         self.wiredBytes = wiredBytes
         self.compressedBytes = compressedBytes
@@ -30,6 +32,15 @@ public struct RAMSnapshot {
         self.pressure = pressure
         self.freeBytes = freeBytes
         self.fileBackedBytes = fileBackedBytes
+        self.calibrationBytes = calibrationBytes
+    }
+
+    /// The same reading with a different correction (0 gives the raw number).
+    public func withCalibration(_ bytes: Int64) -> RAMSnapshot {
+        RAMSnapshot(appBytes: appBytes, wiredBytes: wiredBytes, compressedBytes: compressedBytes,
+                    cachedBytes: cachedBytes, totalBytes: totalBytes, swapUsedBytes: swapUsedBytes,
+                    pressure: pressure, freeBytes: freeBytes, fileBackedBytes: fileBackedBytes,
+                    calibrationBytes: bytes)
     }
 
     /// "Memory Used" exactly as Activity Monitor computes it: everything that is neither free
@@ -37,6 +48,12 @@ public struct RAMSnapshot {
     /// speculative and kernel-reserved pages count as used too. Verified against Activity
     /// Monitor on 2026-11-05 (15.90 GB vs 15.90 GB).
     public var usedBytes: UInt64 {
+        let adjusted = Int64(clamping: rawUsedBytes) + calibrationBytes
+        return UInt64(min(max(adjusted, 0), Int64(clamping: totalBytes)))
+    }
+
+    /// Used memory before any user correction.
+    public var rawUsedBytes: UInt64 {
         let parts = appBytes + wiredBytes + compressedBytes
         guard totalBytes > freeBytes + fileBackedBytes else { return parts }
         // Never below the sum of the parts (virtual machines can report less physical memory
@@ -48,6 +65,14 @@ public struct RAMSnapshot {
     public var otherBytes: UInt64 {
         let parts = appBytes + wiredBytes + compressedBytes
         return usedBytes > parts ? usedBytes - parts : 0
+    }
+
+    /// The correction that makes Lanes show `activityMonitorGB`, refused (nil) if it is more than
+    /// 25% of the total away, which is a typo and not a calibration.
+    public func calibration(forActivityMonitorGB gb: Double) -> Int64? {
+        let target = gb * 1_073_741_824
+        guard target > 0, abs(target - Double(rawUsedBytes)) <= 0.25 * Double(totalBytes) else { return nil }
+        return Int64(target - Double(rawUsedBytes))
     }
 
     public var usedFraction: Double {
