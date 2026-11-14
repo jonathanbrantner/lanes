@@ -84,7 +84,7 @@ final class Settings: ObservableObject {
     var gpuDetailVisible: Bool { openDetail == .gpu }
     /// The busiest-apps lists are only read while the CPU or Memory page is open.
     /// The all-sensors list is only read while its page is open.
-    var sensorsVisible: Bool { openDetail == .thermal }
+    var sensorsVisible: Bool { openDetail == .thermal || openDetail == .power }
     var processesVisible: Bool { openDetail == .cpu || openDetail == .memory }
 
     /// Temperature unit. Readings are always collected in °C and converted when shown.

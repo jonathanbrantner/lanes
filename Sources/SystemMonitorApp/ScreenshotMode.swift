@@ -36,6 +36,8 @@ enum ScreenshotMode {
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-cpu.png")
         monitor.settings.openDetail = .gpu
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-gpu.png")
+        monitor.settings.openDetail = .power
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-power.png")
         monitor.settings.openDetail = .thermal
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-sensors.png")
         monitor.settings.openDetail = .devices

@@ -66,7 +66,7 @@ struct PanelView: View {
 
     private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .power, .thermal, .drives, .disk, .devices]
     /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
-    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network, .thermal, .devices]
+    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network, .power, .thermal, .devices]
 
     private var mainPanel: some View {
         let visible = visibleSections
@@ -260,6 +260,7 @@ struct PanelView: View {
         switch item {
         case .memory: memorySection
         case .network: networkSection
+        case .power: powerSection
         case .thermal: sensorsSection
         case .devices: devicesSection
         case .cpu: percentSection(.cpu, value: monitor.cpu,
@@ -356,7 +357,6 @@ struct PanelView: View {
             key.append(("Chip, \(dies.count) sensors", "avg \(settings.temperature(dies.average, symbol: false))  max \(settings.temperature(dies.maximum, symbol: false))", .red))
         }
         for fan in readings.filter({ $0.kind == .fan && $0.name == "Fan speed" }) { key.append((fan.name, sensorText(fan), .primary)) }
-        for power in readings.filter({ $0.kind == .power && SensorsCollector.isKnown($0.name) }) { key.append((power.name, sensorText(power), .primary)) }
         return VStack(alignment: .leading, spacing: 8) {
             header(.thermal)
             if readings.isEmpty { Text("Waiting for data").foregroundStyle(.secondary) }
@@ -459,6 +459,43 @@ struct PanelView: View {
             Image(nsImage: NSWorkspace.shared.icon(forFile: path)).resizable()
         } else {
             Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Power
+
+    /// Power page: the system's draw over time, then where it comes from and goes.
+    private var powerSection: some View {
+        let known = monitor.sensors.filter { $0.kind == .power && SensorsCollector.isKnown($0.name) }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                header(.power)
+                Spacer()
+                Text(monitor.power?.systemWatts.map { String(format: "%.1f W", $0) } ?? "n/a").monospacedDigit()
+            }
+            HistoryChart(values: zoomed(monitor.powerHistory, minSpan: 2, floor: 0, padding: 0.5), color: MonitorItem.power.color,
+                         scrub: scrub(monitor.powerHistory) { String(format: "%.1f W", $0) }).frame(height: 40)
+            VStack(spacing: 4) {
+                ForEach(known.indices, id: \.self) { i in
+                    HStack {
+                        Text(known[i].name).foregroundStyle(.secondary)
+                        Spacer(minLength: 6)
+                        Text(sensorText(known[i])).monospacedDigit()
+                    }
+                    .font(.system(size: 12))
+                }
+                if let gpu = monitor.power?.gpuWatts {
+                    HStack {
+                        Text("GPU").foregroundStyle(.secondary)
+                        Spacer(minLength: 6)
+                        Text(String(format: "%.2f W", gpu)).monospacedDigit()
+                    }
+                    .font(.system(size: 12))
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 
