@@ -19,6 +19,8 @@ struct TileData: Identifiable {
     let history: [Double]
     /// 0...1 fill for the bar shown when there is no history (Batteries).
     var fraction: Double?
+    /// One line per entry (name, value), for tiles that list several things (Batteries).
+    var lines: [(String, String)] = []
 }
 
 /// One tile: name and corner text, a big number, a small caption and a little graph.
@@ -43,7 +45,7 @@ struct Tile: View {
                 Text(data.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 2)
                 if let corner = data.corner {
-                    Text(corner).font(.system(size: 10, design: .monospaced)).foregroundStyle(data.cornerColor)
+                    Text(corner).font(.system(size: 10, design: .monospaced)).foregroundStyle(data.cornerColor).lineLimit(1).fixedSize()
                 }
                 if action != nil {
                     Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
@@ -70,6 +72,17 @@ struct Tile: View {
                     speeds
                 }
                 .font(.system(size: 10, weight: .medium)).lineLimit(1)
+            } else if !data.lines.isEmpty {
+                VStack(spacing: 1) {
+                    ForEach(data.lines.indices.prefix(4), id: \.self) { i in
+                        HStack(spacing: 4) {
+                            Text(data.lines[i].0).lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 2)
+                            Text(data.lines[i].1).monospacedDigit()
+                        }
+                    }
+                }
+                .font(.system(size: 10)).foregroundStyle(.secondary)
             } else {
                 Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
             }

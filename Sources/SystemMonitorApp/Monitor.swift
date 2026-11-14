@@ -69,7 +69,7 @@ final class Monitor: ObservableObject {
 
     /// Starts or stops the Bluetooth LE reads to match the settings.
     func updateBLEReading() {
-        let wanted = settings.readBluetoothBatteries && (settings.menuBarItems.union(settings.panelItems)).contains(.devices)
+        let wanted = settings.menuBarItems.union(settings.panelItems).contains(.devices)   // only while Batteries is shown
         if wanted, bleTimer == nil {
             _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)   // makes macOS show its Input Monitoring prompt
             readBLE()

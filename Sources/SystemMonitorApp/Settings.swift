@@ -3,7 +3,7 @@ import SystemMonitorCore
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
-    case memory, drives, disk, power, cpu, gpu, thermal, network, devices
+    case cpu, gpu, memory, network, power, thermal, drives, disk, devices
 
     var id: String { rawValue }
 
@@ -91,10 +91,6 @@ final class Settings: ObservableObject {
     @Published var useFahrenheit: Bool {
         didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }
     }
-    /// Also read keyboard and mouse batteries over Bluetooth LE (asks macOS for Bluetooth access).
-    @Published var readBluetoothBatteries: Bool {
-        didSet { UserDefaults.standard.set(readBluetoothBatteries, forKey: "readBluetoothBatteries") }
-    }
     /// Correction to Memory used, in bytes, set from "Calibrate" in Settings (0 = none).
     @Published var memoryCalibration: Int64 {
         didSet { UserDefaults.standard.set(Double(memoryCalibration), forKey: "memoryCalibration") }
@@ -104,16 +100,9 @@ final class Settings: ObservableObject {
     @Published var panelList: Bool {
         didSet { UserDefaults.standard.set(panelList, forKey: "panelList") }
     }
-    @Published var menuBarMeters: Bool {
-        didSet { UserDefaults.standard.set(menuBarMeters, forKey: "menuBarMeters") }
-    }
     /// Menu bar style: false = short names (MEM, CPU ...), true = coloured icons with shorter text.
     @Published var menuBarIcons: Bool {
         didSet { UserDefaults.standard.set(menuBarIcons, forKey: "menuBarIcons") }
-    }
-    /// Show the CPU and GPU temperature in the menu bar too (red, after the load).
-    @Published var menuBarTemperatures: Bool {
-        didSet { UserDefaults.standard.set(menuBarTemperatures, forKey: "menuBarTemperatures") }
     }
     /// nil = detect from this Mac's CPU name.
     @Published var chipOverride: ChipFamily? {
@@ -147,11 +136,8 @@ final class Settings: ObservableObject {
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
         menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")
-        menuBarMeters = UserDefaults.standard.bool(forKey: "menuBarMeters")
         panelList = UserDefaults.standard.bool(forKey: "panelList")
         memoryCalibration = Int64(UserDefaults.standard.double(forKey: "memoryCalibration"))
-        readBluetoothBatteries = UserDefaults.standard.bool(forKey: "readBluetoothBatteries")
-        menuBarTemperatures = UserDefaults.standard.object(forKey: "menuBarTemperatures") as? Bool ?? true
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
         updateInterval = Self.intervals.contains(saved) ? saved : 1

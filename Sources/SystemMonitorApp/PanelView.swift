@@ -63,7 +63,7 @@ struct PanelView: View {
 
     // MARK: Main panel
 
-    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .power, .drives, .disk, .thermal, .devices]
+    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .power, .thermal, .drives, .disk, .devices]
     /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
     private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network, .thermal, .devices]
 
@@ -154,7 +154,8 @@ struct PanelView: View {
     private func driveCorner(_ drive: DriveRate) -> (text: String?, color: Color) {
         if monitor.smart[drive.bsdName] == .failing { return ("SMART ✗", .red) }
         guard let space = space(for: drive) else { return (nil, .secondary) }
-        return (ByteCountFormatter.string(fromByteCount: Int64(space.freeBytes), countStyle: .file), .secondary)
+        let gb = Double(space.freeBytes) / 1e9
+        return (gb >= 1000 ? String(format: "%.1f TB", gb / 1000) : String(format: "%.0f GB", gb), .secondary)
     }
 
     private func tileData(_ item: MonitorItem) -> TileData? {
@@ -229,8 +230,11 @@ struct PanelView: View {
             guard let lowest = monitor.lowestBattery else { return nil }
             let names = (monitor.laptopBattery == nil ? [] : ["This Mac"]) + monitor.deviceBatteries.map(\.name)
             var data = TileData(id: item, symbol: item.symbol, name: "Batteries", color: item.color,
-                                big: "\(lowest)%", small: names.map(shortDeviceName).joined(separator: ", "),
+                                big: "\(lowest)%", small: "\(names.count) device\(names.count == 1 ? "" : "s")",
                                 corner: nil, history: [])
+            // Every device on its own line (the lowest level is the big number).
+            data.lines = (monitor.laptopBattery.map { [("This Mac", "\($0.percent)%")] } ?? [])
+                + monitor.deviceBatteries.map { (shortDeviceName($0.name), "\($0.lowestPercent)%") }
             data.fraction = Double(lowest) / 100
             return data
         }

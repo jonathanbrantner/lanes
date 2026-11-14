@@ -11,7 +11,6 @@ extension Monitor {
         var cells: [IconCell] = []
         let on = settings.menuBarItems
         let icons = settings.menuBarIcons
-        let meters = settings.menuBarMeters
 
         /// One cell in the chosen style. `value` is the full text, `short` the Icons-style text,
         /// `samples` / `shortSamples` the widest strings for a steady width.
@@ -32,10 +31,6 @@ extension Monitor {
         func cell(_ item: MonitorItem, label: String, value: String, short: String? = nil,
                   color: NSColor = .labelColor, samples: [String], shortSamples: [String]? = nil,
                   fraction: Double? = nil) -> IconCell {
-            if meters, let fraction {
-                return IconCell(layout: .meter(fraction: fraction, meterColor: item.nsColor, value: short ?? value),
-                                color: color, widthSamples: shortSamples ?? Array(samples.dropFirst()))
-            }
             if icons {
                 return IconCell(layout: .icon(symbol: symbol(item), symbolColor: item.nsColor, value: short ?? value),
                                 color: color, widthSamples: shortSamples ?? Array(samples.dropFirst()))
@@ -85,7 +80,7 @@ extension Monitor {
             }
         }
         if on.contains(.disk), let d = internalDrive {
-            let temp: (String, NSColor)? = settings.showTemperatures && settings.menuBarTemperatures
+            let temp: (String, NSColor)? = settings.showTemperatures
                 ? thermal?.ssdC.map { (settings.temperature($0, symbol: false), .systemRed) } : nil
             cells.append(driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
         }
@@ -123,7 +118,7 @@ extension Monitor {
         for (item, label, load) in [(MonitorItem.cpu, "CPU", cpu), (.gpu, "GPU", gpu)] {
             guard on.contains(item), let load else { continue }
             let tempC = item == .cpu ? thermal?.cpuC : thermal?.gpuC
-            let temp = settings.showTemperatures && settings.menuBarTemperatures
+            let temp = settings.showTemperatures
                 ? tempC.map { " " + settings.temperature($0, symbol: false) } : nil
             let sample = temp == nil ? "100%" : "100% 212°"
             let percent = String(format: "%.0f%%", load * 100)

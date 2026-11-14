@@ -73,17 +73,8 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
-                if settings.showTemperatures {
-                    Divider()
-                    SettingsRow(title: "Temperature in menu bar") {
-                        Toggle("", isOn: $settings.menuBarTemperatures).toggleStyle(.checkbox).labelsHidden()
-                    }
-                }
-                Divider()
-                SettingsRow(title: "Keyboard and mouse batteries") {
-                    Toggle("", isOn: $settings.readBluetoothBatteries).toggleStyle(.checkbox).labelsHidden()
-                }
                 if monitor.logitechStatus.hasPrefix("open failed") {
+                    Divider()
                     HStack {
                         Text("Mouse blocked: allow Lanes under Input Monitoring.").font(.caption).foregroundStyle(.orange)
                         Spacer()
@@ -102,11 +93,10 @@ struct SettingsView: View {
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
                 Divider()
-                SettingsRow(title: "Menu bar style") {
-                    Picker("", selection: menuBarStyle) {
-                        Text("Names").tag(0)
-                        Text("Icons").tag(1)
-                        Text("Meters").tag(2)
+                SettingsRow(title: "Menu bar") {
+                    Picker("", selection: $settings.menuBarIcons) {
+                        Text("Names").tag(false)
+                        Text("Icons").tag(true)
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
@@ -144,16 +134,6 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
         }
-    }
-
-    /// Menu bar look: 0 = names, 1 = icons, 2 = meters (icons plus small meters for memory, CPU and GPU).
-    private var menuBarStyle: Binding<Int> {
-        Binding(
-            get: { settings.menuBarMeters ? 2 : (settings.menuBarIcons ? 1 : 0) },
-            set: { style in
-                settings.menuBarMeters = style == 2
-                settings.menuBarIcons = style != 0
-            })
     }
 
     /// One control for "show temperatures" and the unit: 0 = off, 1 = °C, 2 = °F.
