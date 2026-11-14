@@ -108,14 +108,17 @@ struct PanelView: View {
 
     /// The Mac's own battery (laptops) and connected Bluetooth devices with a battery.
     private var batteriesStrip: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if let battery = monitor.laptopBattery {
-                batteryRow("This Mac", [("", battery.percent)],
-                           note: battery.isCharging ? "charging" : (battery.onPower ? "on power" : ""))
+        HStack(alignment: .center, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
+                if let battery = monitor.laptopBattery {
+                    batteryRow("This Mac", [("", battery.percent)],
+                               note: battery.isCharging ? "charging" : (battery.onPower ? "on power" : ""))
+                }
+                ForEach(monitor.deviceBatteries, id: \.name) { device in
+                    batteryRow(device.name, device.parts.map { ($0.label, $0.percent) }, note: "")
+                }
             }
-            ForEach(monitor.deviceBatteries, id: \.name) { device in
-                batteryRow(device.name, device.parts.map { ($0.label, $0.percent) }, note: "")
-            }
+            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -466,7 +469,7 @@ struct PanelView: View {
             if monitor.network.isEmpty {
                 Text("No active connection").foregroundStyle(.secondary)
             }
-            ForEach(monitor.network, id: \.bsdName) { connection in
+            ForEach(monitor.activeNetwork, id: \.bsdName) { connection in
                 let samples = monitor.networkHistory[connection.bsdName] ?? []
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -486,6 +489,10 @@ struct PanelView: View {
                 }
                 .padding(8)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
+            let hidden = monitor.network.count - monitor.activeNetwork.count
+            if hidden > 0 {
+                Text("\(hidden) idle connection\(hidden == 1 ? "" : "s") hidden").font(.caption).foregroundStyle(.secondary)
             }
         }
     }

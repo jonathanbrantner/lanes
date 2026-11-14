@@ -83,9 +83,19 @@ struct SettingsView: View {
                 SettingsRow(title: "Keyboard and mouse batteries") {
                     Toggle("", isOn: $settings.readBluetoothBatteries).toggleStyle(.checkbox).labelsHidden()
                 }
-                Text("Reads Logitech and other Bluetooth keyboards and mice. macOS asks for Bluetooth access the first time.")
+                Text("Reads Logitech and other Bluetooth keyboards and mice, including ones on a Logitech USB receiver. macOS may ask for Bluetooth or input access the first time.")
                     .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, 8)
+                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, monitor.logitechStatus.hasPrefix("open failed") ? 2 : 8)
+                if monitor.logitechStatus.hasPrefix("open failed") {
+                    HStack {
+                        Text("Mouse blocked: allow Lanes under Input Monitoring.").font(.caption).foregroundStyle(.orange)
+                        Spacer()
+                        Button("Open") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+                        }
+                    }
+                    .padding(.bottom, 8)
+                }
                 Divider()
                 SettingsRow(title: "Menu bar style") {
                     Picker("", selection: menuBarStyle) {

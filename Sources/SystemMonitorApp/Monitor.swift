@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import IOKit.hid
 import SystemMonitorCore
 
 struct DriveSample {
@@ -58,6 +59,10 @@ final class Monitor: ObservableObject {
     /// Keyboard and mouse batteries from `BLEBatteryReader` (opt-in), refreshed about once a minute
     /// while the Batteries item is shown.
     @Published private(set) var bleBatteries: [DeviceBattery] = []
+    /// Logitech mice and keyboards on a USB receiver (HID++), read on a background queue.
+    @Published private(set) var logitechBatteries: [DeviceBattery] = []
+    /// What the last Logitech read did; Settings shows a hint when macOS blocked it.
+    @Published private(set) var logitechStatus = ""
     private let bleReader = BLEBatteryReader()
     private var bleTimer: Timer?
 
@@ -65,6 +70,7 @@ final class Monitor: ObservableObject {
     func updateBLEReading() {
         let wanted = settings.readBluetoothBatteries && (settings.menuBarItems.union(settings.panelItems)).contains(.devices)
         if wanted, bleTimer == nil {
+            _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)   // makes macOS show its Input Monitoring prompt
             readBLE()
             bleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.readBLE() }
@@ -74,11 +80,21 @@ final class Monitor: ObservableObject {
             bleTimer = nil
             bleReader.stop()
             bleBatteries = []
+            logitechBatteries = []
         }
     }
 
     private func readBLE() {
         bleReader.read { [weak self] devices in self?.bleBatteries = devices }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let found = LogitechReceiver.batteries()   // about a second; never on the sampler queue
+            let status = LogitechReceiver.lastStatus
+            DispatchQueue.main.async {
+                self?.logitechBatteries = found
+                self?.logitechStatus = status
+                UserDefaults.standard.set(status, forKey: "lastLogitechRead")   // readable with `defaults read`
+            }
+        }
     }
 
     private let sampler: Sampler?
@@ -144,7 +160,8 @@ final class Monitor: ObservableObject {
     /// Apple-listed devices plus, if switched on, keyboards and mice read over Bluetooth LE.
     var deviceBatteries: [DeviceBattery] {
         let known = Set(state.deviceBatteries.map(\.name))
-        return (state.deviceBatteries + bleBatteries.filter { !known.contains($0.name) }).sorted { $0.name < $1.name }
+        return (state.deviceBatteries + (bleBatteries + logitechBatteries).filter { !known.contains($0.name) })
+            .sorted { $0.name < $1.name }
     }
     var laptopBattery: LaptopBattery? { state.laptopBattery }
     var sensors: [SensorReading] { state.sensors }
@@ -155,6 +172,15 @@ final class Monitor: ObservableObject {
     var smart: [String: SmartStatus] { state.smart }
     var networkDown: Double { state.network.reduce(0) { $0 + $1.downMBps } }
     var networkUp: Double { state.network.reduce(0) { $0 + $1.upMBps } }
+
+    /// The connections worth showing: those that moved data in the last minute, else the first (usually
+    /// Wi-Fi). Idle ones (Thunderbolt ports, adapters) are hidden.
+    var activeNetwork: [NetworkRate] {
+        let moved = state.network.filter { rate in
+            (state.networkHistory[rate.bsdName] ?? []).contains { $0.read + $0.write > 0.01 }
+        }
+        return moved.isEmpty ? Array(state.network.prefix(1)) : moved
+    }
 
     /// External drives that are connected and not switched off in settings.
     var externalDrives: [DriveRate] {

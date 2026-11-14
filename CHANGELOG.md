@@ -12,14 +12,14 @@ New interface
 - Settings is simpler: icon buttons for what shows in the menu bar and the panel, grouped Display and General sections, one `Off | °C | °F` control, and a separate page for the chip choice and definitions.
 
 More in this release
-- Network: download and upload per connection (Wi-Fi, Ethernet), with a tile, a page with a graph per connection, and a menu bar cell.
+- Network: download and upload for the connections in use (Wi-Fi, Ethernet; idle ones are hidden), with a tile, a page with a graph per connection, and a menu bar cell.
 - Drives show free space on the tile, and a red "SMART" warning if macOS reports a drive failing.
-- Batteries: the Mac's own battery on laptops and connected Bluetooth devices (AirPods, mouse, keyboard) in one strip; click it for a page with a bar for every part (left, right, case).
+- Batteries: the Mac's own battery on laptops and connected Bluetooth devices (AirPods, mouse, keyboard) in one strip with an arrow; click it for a page with a bar for every part (left, right, case).
 - Busiest apps by CPU on the CPU page and by memory on the Memory page (read only while that page is open).
 - Sensors page (click the Avg temp strip): every temperature, fan, power, voltage and current reading the Mac offers, and a warning when macOS is throttling.
 - Menu bar style: Names, Icons or Meters (small bars for memory, CPU and GPU), with red temperatures, a switch for temperatures in the menu bar, and steady widths so the bar does not bounce.
 - Graph hover: hover a graph on a page to see the exact value and how long ago.
-- Settings: type what Activity Monitor shows and "Calibrate" corrects Memory used for that Mac (Reset undoes it). Optional "Keyboard and mouse batteries" reads Bluetooth LE devices such as the Logitech MX Keys (macOS asks for Bluetooth access; Logitech mice on a USB receiver cannot be read).
+- Settings: type what Activity Monitor shows and "Calibrate" corrects Memory used for that Mac (Reset undoes it). Optional "Keyboard and mouse batteries" reads Bluetooth LE devices such as the Logitech MX Keys and Logitech mice on a USB receiver (HID++); macOS may ask for Bluetooth or input access.
 - Settings: "Check accuracy" compares the memory numbers with vm_stat; the GPU tile shows the GPU core count; Memory page shows compressed memory over time.
 
 New features

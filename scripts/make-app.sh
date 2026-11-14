@@ -42,6 +42,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc signature: enough to run on the Mac that built it.
-codesign --force --sign - "$APP"
+# Signing: with an Apple Development certificate (free with any Apple ID, create it in Xcode under
+# Settings > Accounts) macOS keeps the permissions you grant (Bluetooth, Input Monitoring) through every
+# rebuild. Without one the app is signed ad hoc, which runs fine, but macOS forgets the permissions
+# after each build. Set LANES_SIGN_IDENTITY to pick a specific certificate.
+IDENTITY="${LANES_SIGN_IDENTITY:-$(security find-identity -p codesigning 2>/dev/null | grep -m1 'Apple Development' | awk '{print $2}' || true)}"
+if [ -n "$IDENTITY" ]; then
+    codesign --force --sign "$IDENTITY" "$APP"
+    echo "Signed with your Apple Development certificate."
+else
+    codesign --force --sign - "$APP"
+    echo "No Apple Development certificate found: signed ad hoc (macOS forgets permissions after each build)."
+fi
 echo "Built $APP"
