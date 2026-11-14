@@ -46,7 +46,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .gpu: .systemPurple
         case .thermal: .systemRed
         case .network: .systemCyan
-        case .devices: .systemPink
+        case .devices: .systemGreen
         }
     }
 

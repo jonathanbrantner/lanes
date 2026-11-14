@@ -90,8 +90,19 @@ extension Monitor {
             cells.append(driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
         }
         if on.contains(.devices), let lowest = lowestBattery {
-            cells.append(cell(.devices, label: "BAT", value: "\(lowest)%", color: lowest <= 20 ? .systemRed : .labelColor,
-                              samples: ["BAT", "100%"], shortSamples: ["100%"], fraction: Double(lowest) / 100))
+            // The symbol follows the level and is green, or red at 20% and below, so a full battery never looks empty.
+            let level = lowest >= 88 ? "100" : (lowest >= 63 ? "75" : (lowest >= 38 ? "50" : (lowest >= 13 ? "25" : "0")))
+            var built = cell(.devices, label: "BAT", value: "\(lowest)%", color: lowest <= 20 ? .systemRed : .labelColor,
+                             samples: ["BAT", "100%"], shortSamples: ["100%"], fraction: Double(lowest) / 100)
+            if case .icon(_, _, let value) = built.layout {
+                built = IconCell(layout: .icon(symbol: "battery.\(level)percent",
+                                               symbolColor: lowest <= 20 ? .systemRed : .systemGreen, value: value),
+                                 color: built.color, widthSamples: built.widthSamples)
+            } else if case .meter(let f, _, let value) = built.layout {
+                built = IconCell(layout: .meter(fraction: f, meterColor: lowest <= 20 ? .systemRed : .systemGreen, value: value),
+                                 color: built.color, widthSamples: built.widthSamples)
+            }
+            cells.append(built)
         }
         if on.contains(.network), !network.isEmpty {
             cells.append(driveCell(.network, name: "NET", read: networkDown, write: networkUp, temp: nil))

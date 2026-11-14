@@ -57,6 +57,12 @@ if args.contains("--memory") {
     exit(0)
 }
 
+if args.contains("--batteries") {
+    print("Bluetooth:", DeviceBatteries.bluetooth().map { "\($0.name) \($0.parts)" })
+    print("Laptop:", DeviceBatteries.laptop().map { "\($0)" } ?? "none")
+    exit(0)
+}
+
 if args.contains("--cluster-probe") {
     runClusterProbe(efficiencyOnly: args.contains("--e-only"))
     exit(0)
