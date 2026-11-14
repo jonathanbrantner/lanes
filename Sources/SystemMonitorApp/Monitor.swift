@@ -30,6 +30,8 @@ struct MonitorState {
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
     var driveHistory: [String: [DriveSample]] = [:]
+    var network: [NetworkRate] = []
+    var networkHistory: [String: [DriveSample]] = [:]   // read = download, write = upload, MB/s
 }
 
 /// Runs the collectors on a low-priority queue (scheduled on efficiency cores) and publishes
@@ -100,6 +102,10 @@ final class Monitor: ObservableObject {
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
+    var network: [NetworkRate] { state.network }
+    var networkHistory: [String: [DriveSample]] { state.networkHistory }
+    var networkDown: Double { state.network.reduce(0) { $0 + $1.downMBps } }
+    var networkUp: Double { state.network.reduce(0) { $0 + $1.upMBps } }
 
     /// External drives that are connected and not switched off in settings.
     var externalDrives: [DriveRate] {
@@ -126,6 +132,7 @@ private final class Sampler {
     private let cpu = CPUCollector()
     private let gpu = GPUCollector()
     private let power = PowerCollector()
+    private lazy var networkCollector = NetworkCollector()
     private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
     private var chip = ChipFamily.detect()
     private var temperatures = true
@@ -242,7 +249,33 @@ private final class Sampler {
                              writeBytesPerSec: (mean(h.map(\.write)) ?? r.writeMBps) * 1_000_000)
         }
 
+        sampleNetwork()
+
         onSample?(state)
+    }
+
+    /// Download and upload per connection; averaged over the 5 s window like the drives.
+    private func sampleNetwork() {
+        guard shown.contains(.network) else {
+            state.network = []
+            state.networkHistory = [:]
+            return
+        }
+        let rates = networkCollector.rates()
+        var next: [String: [DriveSample]] = [:]
+        for r in rates {
+            var h = state.networkHistory[r.bsdName] ?? []
+            h.append(DriveSample(read: r.downMBps, write: r.upMBps))
+            if h.count > Monitor.historyLength { h.removeFirst(h.count - Monitor.historyLength) }
+            next[r.bsdName] = h
+        }
+        state.networkHistory = next
+        state.network = rates.map { r in
+            let h = next[r.bsdName]?.suffix(displayWindow) ?? []
+            return NetworkRate(bsdName: r.bsdName, label: r.label,
+                               downBytesPerSec: (mean(h.map(\.read)) ?? r.downMBps) * 1_000_000,
+                               upBytesPerSec: (mean(h.map(\.write)) ?? r.upMBps) * 1_000_000)
+        }
     }
 
     private func clearGPUDetail() {

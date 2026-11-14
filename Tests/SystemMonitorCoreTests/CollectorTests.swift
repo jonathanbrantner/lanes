@@ -256,4 +256,17 @@ final class CollectorTests: XCTestCase {
         XCTAssertEqual(ref!.used, (total - 42171 * 16384 - 556237 * 16384) / gb, accuracy: 0.0001)
         XCTAssertNil(AccuracyCheck.reference(vmStat: "garbage", totalBytes: total))
     }
+
+    func testNetworkDeltaHandlesCounterWrap() {
+        XCTAssertEqual(NetworkCollector.delta(old: 100, new: 400), 300)
+        XCTAssertEqual(NetworkCollector.delta(old: UInt32.max - 9, new: 5), 15)
+    }
+
+    func testNetworkOnlyCountsPhysicalInterfaces() {
+        XCTAssertTrue(NetworkCollector.isPhysical("en0"))
+        XCTAssertTrue(NetworkCollector.isPhysical("en12"))
+        for name in ["lo0", "utun3", "awdl0", "bridge0", "llw0", "en0x", "en"] {
+            XCTAssertFalse(NetworkCollector.isPhysical(name), name)
+        }
+    }
 }

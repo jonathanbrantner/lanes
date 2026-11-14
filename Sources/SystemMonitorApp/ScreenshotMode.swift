@@ -13,7 +13,7 @@ enum ScreenshotMode {
 
         let monitor = Monitor(demo: demoState())
         monitor.settings.menuBarItems = [.memory, .drives]
-        monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu]
+        monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu, .network]
         monitor.settings.hiddenDrives = []
 
         // Menu bar strip: the icon on a dark menu-bar-like background.
@@ -76,6 +76,9 @@ enum ScreenshotMode {
         s.gpuRendererHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 17)) }
         s.gpuTilerHistory = curve(60) { 0.01 + 0.03 * max(0, sin($0 * 13 + 1)) }
         s.gpuSensorHistory = (0..<12).map { i in curve(30) { 41 + 1.5 * sin($0 * 6 + Double(i)) + 0.8 * Double(i % 3) } }
+        s.network = [NetworkRate(bsdName: "en0", label: "Wi-Fi", downBytesPerSec: 3.2e6, upBytesPerSec: 0.4e6)]
+        s.networkHistory = ["en0": (0..<60).map { i in let t = Double(i) / 59; return DriveSample(read: 2 + 3 * abs(sin(t * 8)), write: 0.2 + 0.5 * abs(sin(t * 5))) }]
+        s.compressedHistory = curve(60) { 3.3e9 + 0.2e9 * sin($0 * 6) }
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,
                             readBytesPerSec: 412e6, writeBytesPerSec: 186e6)
         let internalDisk = DriveRate(bsdName: "disk0", label: "Internal SSD", model: "Demo", isInternal: true,

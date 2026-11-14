@@ -22,6 +22,7 @@ extension Monitor {
             case .disk: "internaldrive"
             case .power: "bolt.fill"
             case .thermal: "thermometer.medium"
+            case .network: "network"
             case .cpu: "cpu"
             case .gpu: "display"
             }
@@ -80,6 +81,9 @@ extension Monitor {
             let temp: (String, NSColor)? = settings.showTemperatures && settings.menuBarTemperatures
                 ? thermal?.ssdC.map { (settings.temperature($0, symbol: false), .systemRed) } : nil
             cells.append(driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
+        }
+        if on.contains(.network), !network.isEmpty {
+            cells.append(driveCell(.network, name: "NET", read: networkDown, write: networkUp, temp: nil))
         }
         if on.contains(.power), let watts = power?.systemWatts {
             cells.append(cell(.power, label: "PWR", value: String(format: "%.1f W", watts),

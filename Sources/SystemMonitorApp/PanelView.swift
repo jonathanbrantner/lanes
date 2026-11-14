@@ -63,9 +63,9 @@ struct PanelView: View {
 
     // MARK: Main panel
 
-    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .power, .drives, .disk]
+    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .power, .drives, .disk]
     /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
-    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory]
+    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network]
 
     private var mainPanel: some View {
         let visible = visibleSections
@@ -197,6 +197,16 @@ struct PanelView: View {
                             big: Monitor.speed(drive.readMBps + drive.writeMBps),
                             small: "", rates: rates(drive.readMBps, drive.writeMBps),
                             corner: shownTemp(monitor.thermal?.ssdC), history: driveHistory(drive))
+        case .network:
+            guard !monitor.network.isEmpty else {
+                return TileData(id: item, symbol: item.symbol, name: "Network", color: item.color,
+                                big: "-", small: "No connection", corner: nil, history: [])
+            }
+            let combined = networkCombinedHistory()
+            return TileData(id: item, symbol: item.symbol, name: "Network", color: item.color,
+                            big: Monitor.speed(monitor.networkDown + monitor.networkUp),
+                            small: "", rates: rates(monitor.networkDown, monitor.networkUp),
+                            corner: nil, history: zoomed(combined, minSpan: 1, floor: 0, padding: 0.5))
         case .thermal:
             return nil
         }
@@ -208,6 +218,7 @@ struct PanelView: View {
             switch item {
             case .gpu: return monitor.gpu != nil
             case .power: return monitor.power != nil
+            case .network: return true
             case .thermal: return monitor.thermal?.averageC != nil || !(monitor.thermal?.fans.isEmpty ?? true)
             default: return true
             }
@@ -218,6 +229,7 @@ struct PanelView: View {
     private func section(for item: MonitorItem) -> some View {
         switch item {
         case .memory: memorySection
+        case .network: networkSection
         case .cpu: percentSection(.cpu, value: monitor.cpu,
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.cpuHistory),
@@ -229,6 +241,50 @@ struct PanelView: View {
                                   temp: shownTemp(monitor.thermal?.gpuC),
                                   detail: { gpuDetailView })
         default: EmptyView()
+        }
+    }
+
+    // MARK: Network
+
+    /// Download plus upload of every connection, one value per sample.
+    private func networkCombinedHistory() -> [Double] {
+        let series = monitor.networkHistory.values
+        let length = series.map(\.count).max() ?? 0
+        return (0..<length).map { i in
+            series.reduce(0) { sum, h in
+                let offset = length - h.count
+                return i >= offset ? sum + h[i - offset].read + h[i - offset].write : sum
+            }
+        }
+    }
+
+    private var networkSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header(.network)
+            if monitor.network.isEmpty {
+                Text("No active connection").foregroundStyle(.secondary)
+            }
+            ForEach(monitor.network, id: \.bsdName) { connection in
+                let samples = monitor.networkHistory[connection.bsdName] ?? []
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(connection.label).fontWeight(.semibold)
+                        Spacer()
+                        let r = rates(connection.downMBps, connection.upMBps)
+                        Text("↓").foregroundStyle(Color(nsColor: .systemBlue)); Text("\(r.read) MB/s").monospacedDigit()
+                        Text("↑").foregroundStyle(Color(nsColor: .systemOrange)); Text("\(r.write) MB/s").monospacedDigit()
+                    }
+                    .font(.caption)
+                    HistoryChart(values: zoomed(samples.map(\.read), minSpan: 1, floor: 0, padding: 0.3),
+                                 color: Color(nsColor: .systemBlue),
+                                 scrub: scrub(samples.map(\.read)) { Monitor.speed($0) }).frame(height: 28)
+                    HistoryChart(values: zoomed(samples.map(\.write), minSpan: 1, floor: 0, padding: 0.3),
+                                 color: Color(nsColor: .systemOrange),
+                                 scrub: scrub(samples.map(\.write)) { Monitor.speed($0) }).frame(height: 28)
+                }
+                .padding(8)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
         }
     }
 

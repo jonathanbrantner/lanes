@@ -3,7 +3,7 @@ import SystemMonitorCore
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
-    case memory, drives, disk, power, cpu, gpu, thermal
+    case memory, drives, disk, power, cpu, gpu, thermal, network
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .cpu: "CPU"
         case .gpu: "GPU"
         case .thermal: "Avg temp & fan"
+        case .network: "Network"
         }
     }
 
@@ -28,6 +29,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .cpu: "cpu"
         case .gpu: "display"
         case .thermal: "thermometer.medium"
+        case .network: "network"
         }
     }
 
@@ -41,6 +43,7 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .cpu: .systemIndigo
         case .gpu: .systemPurple
         case .thermal: .systemRed
+        case .network: .systemCyan
         }
     }
 
