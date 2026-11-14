@@ -63,9 +63,9 @@ struct PanelView: View {
 
     // MARK: Main panel
 
-    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .power, .drives, .disk]
+    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .power, .drives, .disk, .thermal, .devices]
     /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
-    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network]
+    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network, .thermal, .devices]
 
     private var mainPanel: some View {
         let visible = visibleSections
@@ -81,12 +81,6 @@ struct PanelView: View {
                         Tile(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
                     }
                 }
-            }
-            if visible.contains(.devices) {
-                Button { detail = .devices } label: { batteriesStrip }.buttonStyle(.plain)
-            }
-            if visible.contains(.thermal) {
-                Button { detail = .thermal } label: { thermalStrip }.buttonStyle(.plain)
             }
             HStack {
                 Button("Settings") { showSettings = true }
@@ -104,65 +98,6 @@ struct PanelView: View {
                 .buttonStyle(.borderless)
             section(for: item)
         }
-    }
-
-    /// The Mac's own battery (laptops) and connected Bluetooth devices with a battery.
-    private var batteriesStrip: some View {
-        HStack(alignment: .center, spacing: 6) {
-            VStack(alignment: .leading, spacing: 5) {
-                if let battery = monitor.laptopBattery {
-                    batteryRow("This Mac", [("", battery.percent)],
-                               note: battery.isCharging ? "charging" : (battery.onPower ? "on power" : ""))
-                }
-                ForEach(monitor.deviceBatteries, id: \.name) { device in
-                    batteryRow(device.name, device.parts.map { ($0.label, $0.percent) }, note: "")
-                }
-            }
-            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func batteryRow(_ name: String, _ parts: [(String, Int)], note: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "battery.75percent").foregroundStyle(MonitorItem.devices.color)
-            Text(name).lineLimit(1).truncationMode(.tail)
-            Spacer(minLength: 6)
-            if !note.isEmpty { Text(note).foregroundStyle(.secondary) }
-            ForEach(parts.indices, id: \.self) { i in
-                let part = parts[i]
-                Text((part.0.isEmpty ? "" : String(part.0.prefix(1)) + " ") + "\(part.1)%")
-                    .monospacedDigit()
-                    .foregroundStyle(part.1 <= 20 ? Color.red : Color.primary)
-            }
-        }
-        .font(.system(size: 11))
-    }
-
-    /// Average temperature and fan speed as one line under the tiles.
-    private var thermalStrip: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "thermometer.medium").foregroundStyle(MonitorItem.thermal.color)
-            if let avg = monitor.thermal?.averageC {
-                Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.red)
-            }
-            if let label = pressureText(monitor.thermalPressure) {
-                Text("·").foregroundStyle(.secondary)
-                Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
-            }
-            if let fan = monitor.thermal?.fans.first {
-                Text("·").foregroundStyle(.secondary)
-                Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
-            }
-            Spacer()
-            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: Tiles
@@ -272,8 +207,22 @@ struct PanelView: View {
                             big: Monitor.speed(monitor.networkDown + monitor.networkUp),
                             small: "", rates: rates(monitor.networkDown, monitor.networkUp),
                             corner: nil, history: zoomed(combined, minSpan: 1, floor: 0, padding: 0.5))
-        case .thermal, .devices:
-            return nil
+        case .thermal:
+            guard let avg = monitor.thermal?.averageC else { return nil }
+            let fan = monitor.thermal?.fans.first.map { String(format: "Fan %.0f RPM", $0.rpm) }
+            var data = TileData(id: item, symbol: item.symbol, name: "Avg temp", color: item.color,
+                                big: settings.temperature(avg), small: pressureText(monitor.thermalPressure) ?? fan ?? "All sensors",
+                                corner: nil, history: zoomed(monitor.avgTempHistory, minSpan: 4, padding: 1))
+            data.fraction = min(1, avg / 100)
+            return data
+        case .devices:
+            guard let lowest = monitor.lowestBattery else { return nil }
+            let names = (monitor.laptopBattery == nil ? [] : ["This Mac"]) + monitor.deviceBatteries.map(\.name)
+            var data = TileData(id: item, symbol: item.symbol, name: "Batteries", color: item.color,
+                                big: "\(lowest)%", small: names.map(shortDeviceName).joined(separator: ", "),
+                                corner: nil, history: [])
+            data.fraction = Double(lowest) / 100
+            return data
         }
     }
 
@@ -689,6 +638,12 @@ struct PanelView: View {
 
     private func bytes(_ value: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .memory)
+    }
+
+    /// "Jonathan's AirPods Pro" -> "AirPods Pro": drop the owner's name so the card stays short.
+    private func shortDeviceName(_ name: String) -> String {
+        if let range = name.range(of: "’s ") ?? name.range(of: "'s ") { return String(name[range.upperBound...]) }
+        return name
     }
 
     /// macOS's own thermal state; nothing is shown while it is "nominal".

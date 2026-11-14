@@ -17,6 +17,8 @@ struct TileData: Identifiable {
     var footnote: String?
     /// 0...1 values for the little graph.
     let history: [Double]
+    /// 0...1 fill for the bar shown when there is no history (Batteries).
+    var fraction: Double?
 }
 
 /// One tile: name and corner text, a big number, a small caption and a little graph.
@@ -71,7 +73,19 @@ struct Tile: View {
             } else {
                 Text(data.small).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
             }
-            HistoryChart(values: data.history, color: data.color).frame(height: 28)
+            if data.history.count < 2, let fraction = data.fraction {
+                // Items without a history (Batteries) show how full they are.
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.12))
+                        RoundedRectangle(cornerRadius: 4).fill(fraction <= 0.2 ? Color.red : Color.green)
+                            .frame(width: max(4, geo.size.width * CGFloat(min(max(fraction, 0), 1))))
+                    }
+                }
+                .frame(height: 10).frame(height: 28)
+            } else {
+                HistoryChart(values: data.history, color: data.color).frame(height: 28)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

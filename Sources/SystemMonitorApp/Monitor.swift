@@ -12,6 +12,7 @@ struct DriveSample {
 struct MonitorState {
     var ram: RAMSnapshot?
     var cpu: Double?
+    var avgTempHistory: [Double] = []   // degrees C, kept while Avg temp is shown
     var gpu: Double?
     var power: PowerSnapshot?
     var thermal: ThermalSnapshot?
@@ -142,6 +143,7 @@ final class Monitor: ObservableObject {
     var power: PowerSnapshot? { state.power }
     var thermal: ThermalSnapshot? { state.thermal }
     var coreUsage: [Double] { state.coreUsage }
+    var avgTempHistory: [Double] { state.avgTempHistory }
     var gpuDetail: GPUDetails? { state.gpuDetail }
     var coreHistory: [[Double]] { state.coreHistory }
     var gpuRendererHistory: [Double] { state.gpuRendererHistory }
@@ -485,6 +487,7 @@ private final class Sampler {
         guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
         if thermal == nil { thermal = ThermalCollector(chip: chip) }
         state.thermal = thermal?.snapshot(wanted: wanted)
+        if shown.contains(.thermal) { push(&state.avgTempHistory, state.thermal?.averageC) } else { state.avgTempHistory = [] }
         let sensors = state.thermal?.gpuSensorsC ?? []
         if sensors.isEmpty {
             state.gpuSensorHistory = []

@@ -64,6 +64,7 @@ enum ScreenshotMode {
         s.ramHistory = curve(60) { 0.62 + 0.05 * sin($0 * 9) + 0.03 * $0 }
         s.cpu = 0.14
         s.cpuHistory = curve(60) { 0.10 + 0.08 * abs(sin($0 * 14)) + ($0 > 0.7 ? 0.25 * sin(($0 - 0.7) * 10) : 0) }
+        s.avgTempHistory = curve(60) { 40 + 3 * sin($0 * 7) + 2 * $0 }
         s.gpu = 0.06
         s.gpuHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 20)) }
         s.power = PowerSnapshot(systemWatts: 9.8, gpuWatts: 0.12)
