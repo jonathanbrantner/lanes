@@ -82,7 +82,9 @@ struct PanelView: View {
                     }
                 }
             }
-            if visible.contains(.devices) { batteriesStrip }
+            if visible.contains(.devices) {
+                Button { detail = .devices } label: { batteriesStrip }.buttonStyle(.plain)
+            }
             if visible.contains(.thermal) {
                 Button { detail = .thermal } label: { thermalStrip }.buttonStyle(.plain)
             }
@@ -118,6 +120,7 @@ struct PanelView: View {
         .padding(.horizontal, 10).padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func batteryRow(_ name: String, _ parts: [(String, Int)], note: String) -> some View {
@@ -291,6 +294,7 @@ struct PanelView: View {
         case .memory: memorySection
         case .network: networkSection
         case .thermal: sensorsSection
+        case .devices: devicesSection
         case .cpu: percentSection(.cpu, value: monitor.cpu,
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.cpuHistory),
@@ -303,6 +307,69 @@ struct PanelView: View {
                                   detail: { gpuDetailView })
         default: EmptyView()
         }
+    }
+
+    // MARK: Batteries page
+
+    /// Expanded view: one card per device with a bar for every part (left, right, case).
+    private var devicesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header(.devices)
+            if let battery = monitor.laptopBattery {
+                batteryCard("This Mac", symbol: "laptopcomputer",
+                            parts: [("Battery", battery.percent)],
+                            detail: [battery.isCharging ? "Charging" : (battery.onPower ? "On power, not charging" : "On battery"),
+                                     "\(battery.cycles) charge cycles"])
+            }
+            ForEach(monitor.deviceBatteries, id: \.name) { device in
+                batteryCard(device.name, symbol: deviceSymbol(device.name),
+                            parts: device.parts.map { ($0.label.isEmpty ? "Battery" : $0.label, $0.percent) }, detail: [])
+            }
+            if monitor.deviceBatteries.isEmpty && monitor.laptopBattery == nil {
+                Text("No device with a battery is connected.").foregroundStyle(.secondary)
+            }
+            Text("Updated about once a minute.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func deviceSymbol(_ name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("airpods") { return "airpodspro" }
+        if lower.contains("keyboard") || lower.contains("keys") { return "keyboard" }
+        if lower.contains("mouse") || lower.contains("mx ") { return "computermouse" }
+        if lower.contains("trackpad") { return "rectangle.and.hand.point.up.left" }
+        return "dot.radiowaves.left.and.right"
+    }
+
+    private func batteryCard(_ name: String, symbol: String, parts: [(String, Int)], detail: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol).foregroundStyle(MonitorItem.devices.color)
+                Text(name).fontWeight(.semibold).lineLimit(1)
+                Spacer()
+            }
+            ForEach(parts.indices, id: \.self) { i in
+                let part = parts[i]
+                HStack(spacing: 8) {
+                    Text(part.0).font(.caption).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 4).fill(part.1 <= 20 ? Color.red : Color.green)
+                                .frame(width: max(4, geo.size.width * CGFloat(part.1) / 100))
+                        }
+                    }
+                    .frame(height: 10)
+                    Text("\(part.1)%").font(.caption).monospacedDigit()
+                        .foregroundStyle(part.1 <= 20 ? Color.red : Color.primary)
+                        .frame(width: 38, alignment: .trailing)
+                }
+            }
+            ForEach(detail, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: Sensors
