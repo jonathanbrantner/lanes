@@ -47,13 +47,28 @@ public final class SensorsCollector {
     }
 
     /// Plain-language names for the keys that are known; others keep the raw 4-letter key.
-    public static func friendlyName(forKey key: String) -> String {
-        let known: [String: String] = [
-            "PSTR": "System power", "PDTR": "Power adapter in", "PHPC": "Processor package power",
-            "F0Ac": "Fan speed", "F0Mn": "Fan minimum", "F0Mx": "Fan maximum", "F0Tg": "Fan target",
-        ]
-        return known[key] ?? key
+    public static func friendlyName(forKey key: String, kind: SensorReading.Kind? = nil) -> String {
+        if let name = knownKeys[key] { return name }
+        // Unknown keys stay recognisable: "Power PD0R" instead of a bare "PD0R".
+        guard let kind else { return key }
+        let label: String
+        switch kind {
+        case .temperature: label = "Temperature"
+        case .fan: label = "Fan"
+        case .power: label = "Power"
+        case .voltage: label = "Voltage"
+        case .current: label = "Current"
+        }
+        return "\(label) \(key)"
     }
+
+    private static let knownKeys: [String: String] = [
+        "PSTR": "System power", "PDTR": "Power adapter in", "PHPC": "Processor package power",
+        "F0Ac": "Fan speed", "F0Mn": "Fan minimum", "F0Mx": "Fan maximum", "F0Tg": "Fan target",
+    ]
+
+    /// True for readings with a plain-language name (the others are raw keys the summary leaves out).
+    public static func isKnown(_ name: String) -> Bool { knownKeys.values.contains(name) }
 
     /// "PMU tdie4" -> "Chip die sensor 4", "NAND CH0" -> "SSD (NAND)".
     public static func friendlyName(forHID name: String) -> String {
@@ -95,7 +110,7 @@ public final class SensorsCollector {
             var v = 0.0
             var type = [CChar](repeating: 0, count: 5)
             guard lanes_smc_read_number(key, &v, &type) == 1, Self.isPlausible(v, kind: kind) else { continue }
-            out.append(SensorReading(kind: kind, name: Self.friendlyName(forKey: key), value: v))
+            out.append(SensorReading(kind: kind, name: Self.friendlyName(forKey: key, kind: kind), value: v))
         }
         return hidReadings() + out
     }

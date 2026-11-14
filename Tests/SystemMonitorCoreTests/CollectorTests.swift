@@ -414,4 +414,11 @@ final class CollectorTests: XCTestCase {
         XCTAssertEqual(s?.maximum, 40)
         XCTAssertNil(SensorsCollector.summary(r, kind: .power, namePrefix: "die"))
     }
+
+    func testUnknownPowerKeysAreLabelled() {
+        XCTAssertEqual(SensorsCollector.friendlyName(forKey: "PD0R", kind: .power), "Power PD0R")
+        XCTAssertEqual(SensorsCollector.friendlyName(forKey: "PDTR", kind: .power), "Power adapter in")
+        XCTAssertTrue(SensorsCollector.isKnown("Power adapter in"))
+        XCTAssertFalse(SensorsCollector.isKnown("Power PD0R"))
+    }
 }

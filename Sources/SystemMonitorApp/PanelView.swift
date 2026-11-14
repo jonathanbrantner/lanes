@@ -356,7 +356,7 @@ struct PanelView: View {
             key.append(("Chip, \(dies.count) sensors", "avg \(settings.temperature(dies.average, symbol: false))  max \(settings.temperature(dies.maximum, symbol: false))", .red))
         }
         for fan in readings.filter({ $0.kind == .fan && $0.name == "Fan speed" }) { key.append((fan.name, sensorText(fan), .primary)) }
-        for power in readings.filter({ $0.kind == .power }).prefix(3) { key.append((power.name, sensorText(power), .primary)) }
+        for power in readings.filter({ $0.kind == .power && SensorsCollector.isKnown($0.name) }) { key.append((power.name, sensorText(power), .primary)) }
         return VStack(alignment: .leading, spacing: 8) {
             header(.thermal)
             if readings.isEmpty { Text("Waiting for data").foregroundStyle(.secondary) }
