@@ -391,25 +391,49 @@ struct PanelView: View {
 
     // MARK: Busiest apps
 
-    /// The five busiest apps by CPU or by memory, on the CPU and Memory pages.
+    /// The five busiest apps by CPU or by memory, on the CPU and Memory pages. Helper processes are added
+    /// to their app, each row has the app's icon and a thin bar relative to the top one.
     private func busiestApps(byMemory: Bool) -> some View {
         let list = byMemory ? monitor.topByMemory : monitor.topByCPU
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(byMemory ? "Most memory" : "Busiest apps").font(.caption.weight(.semibold))
+        let top = max(list.map { byMemory ? Double($0.footprintBytes) : $0.cpuPercent }.max() ?? 1, 1)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(byMemory ? "MOST MEMORY" : "BUSIEST APPS")
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).tracking(0.5)
             if list.isEmpty { Text("Waiting for data").font(.caption).foregroundStyle(.secondary) }
-            ForEach(list, id: \.pid) { p in
-                HStack {
-                    Text(p.name).lineLimit(1)
-                    Spacer(minLength: 6)
-                    Text(byMemory ? bytes(p.footprintBytes) : String(format: "%.0f%%", p.cpuPercent))
-                        .monospacedDigit().foregroundStyle(.secondary)
+            ForEach(list, id: \.name) { p in
+                let value = byMemory ? Double(p.footprintBytes) : p.cpuPercent
+                HStack(spacing: 8) {
+                    appIcon(p.appPath).frame(width: 16, height: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(p.name).lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 6)
+                            Text(byMemory ? bytes(p.footprintBytes) : String(format: "%.0f%%", p.cpuPercent))
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .font(.system(size: 11))
+                        GeometryReader { geo in
+                            RoundedRectangle(cornerRadius: 1.5).fill((byMemory ? MonitorItem.memory : MonitorItem.cpu).color.opacity(0.7))
+                                .frame(width: max(2, geo.size.width * CGFloat(value / top)), height: 3)
+                        }
+                        .frame(height: 3)
+                    }
                 }
-                .font(.caption)
             }
         }
-        .padding(8)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The app's own icon, or a terminal symbol for command line tools.
+    @ViewBuilder
+    private func appIcon(_ path: String?) -> some View {
+        if let path {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path)).resizable()
+        } else {
+            Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Network

@@ -358,4 +358,32 @@ final class CollectorTests: XCTestCase {
         XCTAssertEqual(LogitechReceiver.shortName("MX Keys Mini"), "MX Keys Mini")
         XCTAssertEqual(LogitechReceiver.shortName("Wireless"), "Wireless")
     }
+
+    func testProcessDisplayNames() {
+        let safari = ProcessCollector.displayName(path: "/Applications/Safari.app/Contents/MacOS/Safari", rawName: "Safari")
+        XCTAssertEqual(safari.name, "Safari")
+        XCTAssertEqual(safari.appPath, "/Applications/Safari.app")
+        let helper = ProcessCollector.displayName(
+            path: "/Applications/Google Chrome.app/Contents/Frameworks/X.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)",
+            rawName: "Google Chrome H")
+        XCTAssertEqual(helper.name, "Google Chrome")
+        let xpc = ProcessCollector.displayName(
+            path: "/System/Library/Frameworks/Virtualization.framework/X/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine",
+            rawName: "com.apple.Virtualization.Virtua")
+        XCTAssertEqual(xpc.name, "Virtualization.VirtualMachine")
+        XCTAssertNil(xpc.appPath)
+        XCTAssertEqual(ProcessCollector.displayName(path: "/Users/x/.local/share/claude/versions/2.1.325", rawName: "2.1.325").name, "claude")
+        XCTAssertEqual(ProcessCollector.displayName(path: "/usr/local/bin/node", rawName: "node").name, "node")
+    }
+
+    func testProcessCombineAddsHelpers() {
+        let list = [ProcessUsage(pid: 1, name: "Safari", cpuPercent: 5, footprintBytes: 100),
+                    ProcessUsage(pid: 2, name: "Safari", cpuPercent: 3, footprintBytes: 50, appPath: "/Applications/Safari.app"),
+                    ProcessUsage(pid: 3, name: "node", cpuPercent: 1, footprintBytes: 10)]
+        let combined = ProcessCollector.combine(list).sorted { $0.name < $1.name }
+        XCTAssertEqual(combined.count, 2)
+        XCTAssertEqual(combined[0].cpuPercent, 8)
+        XCTAssertEqual(combined[0].footprintBytes, 150)
+        XCTAssertEqual(combined[0].appPath, "/Applications/Safari.app")
+    }
 }

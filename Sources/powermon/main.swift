@@ -57,6 +57,16 @@ if args.contains("--memory") {
     exit(0)
 }
 
+if args.contains("--processes") {
+    let c = ProcessCollector()
+    _ = c.sample()
+    Thread.sleep(forTimeInterval: 2)
+    let all = c.sample()
+    print("By CPU:", all.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5).map { "\($0.name) \(Int($0.cpuPercent))%" })
+    print("By memory:", all.sorted { $0.footprintBytes > $1.footprintBytes }.prefix(6).map { "\($0.name) \($0.footprintBytes / 1_000_000) MB" })
+    exit(0)
+}
+
 if args.contains("--logitech") {
     runLogitechProbe()
     exit(0)

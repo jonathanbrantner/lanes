@@ -93,11 +93,11 @@ enum ScreenshotMode {
         s.volumes = ["Work SSD": VolumeSpace(name: "Work SSD", totalBytes: 1_000_000_000_000, freeBytes: 412_000_000_000, isInternal: false),
                      "Macintosh HD": VolumeSpace(name: "Macintosh HD", totalBytes: 500_000_000_000, freeBytes: 210_000_000_000, isInternal: true)]
         s.smart = ["disk4": .verified, "disk0": .verified]
-        s.topByCPU = [ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000),
-                      ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000),
+        s.topByCPU = [ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000, appPath: "/Applications/Safari.app"),
+                      ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000, appPath: "/Applications/Xcode.app"),
                       ProcessUsage(pid: 3, name: "WindowServer", cpuPercent: 6, footprintBytes: 400_000_000)]
-        s.topByMemory = [ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000),
-                         ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000),
+        s.topByMemory = [ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000, appPath: "/Applications/Xcode.app"),
+                         ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000, appPath: "/Applications/Safari.app"),
                          ProcessUsage(pid: 4, name: "Slack", cpuPercent: 1, footprintBytes: 620_000_000)]
         s.deviceBatteries = [DeviceBattery(name: "AirPods Pro", parts: [("Left", 86), ("Right", 84), ("Case", 19)]),
                              DeviceBattery(name: "Keyboard", parts: [("", 62)])]
