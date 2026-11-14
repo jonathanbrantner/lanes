@@ -8,7 +8,9 @@ extension Monitor {
     /// Read is blue and write is orange, matching the charts. Whatever is switched on is shown, in a
     /// fixed order, nothing is merged.
     func iconCells() -> [IconCell] {
-        var cells: [IconCell] = []
+        // Built in any order, then sorted into the same order as the panel and Settings.
+        var placed: [(item: MonitorItem, cell: IconCell)] = []
+        func put(_ item: MonitorItem, _ cell: IconCell) { placed.append((item, cell)) }
         let on = settings.menuBarItems
         let icons = settings.menuBarIcons
 
@@ -46,7 +48,7 @@ extension Monitor {
             case .critical: .systemRed
             }
             let gb = Double(ram.usedBytes) / 1_073_741_824
-            cells.append(cell(.memory, label: "MEM", value: String(format: "%.1f GB", gb),
+            put(.memory, cell(.memory, label: "MEM", value: String(format: "%.1f GB", gb),
                               short: String(format: "%.1f", gb), color: color,
                               samples: ["MEM", "88.8 GB"], shortSamples: ["88.8"], fraction: ram.usedFraction))
         }
@@ -73,16 +75,16 @@ extension Monitor {
         }
         if on.contains(.drives) {
             if externalDrives.isEmpty {
-                cells.append(cell(.drives, label: "SSD", value: "none", color: .secondaryLabelColor,
+                put(.drives, cell(.drives, label: "SSD", value: "none", color: .secondaryLabelColor,
                                   samples: ["SSD", "88.8 GB"], shortSamples: ["none"]))
             } else {
-                cells.append(driveCell(.drives, name: "SSD", read: externalRead, write: externalWrite, temp: nil))
+                put(.drives, driveCell(.drives, name: "SSD", read: externalRead, write: externalWrite, temp: nil))
             }
         }
         if on.contains(.disk), let d = internalDrive {
             let temp: (String, NSColor)? = settings.showTemperatures
                 ? thermal?.ssdC.map { (settings.temperature($0, symbol: false), .systemRed) } : nil
-            cells.append(driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
+            put(.disk, driveCell(.disk, name: "DISK", read: d.readMBps, write: d.writeMBps, temp: temp))
         }
         if on.contains(.devices), let lowest = lowestBattery {
             // The symbol follows the level and is green, or red at 20% and below, so a full battery never looks empty.
@@ -97,13 +99,13 @@ extension Monitor {
                 built = IconCell(layout: .meter(fraction: f, meterColor: lowest <= 20 ? .systemRed : .systemGreen, value: value),
                                  color: built.color, widthSamples: built.widthSamples)
             }
-            cells.append(built)
+            put(.devices, built)
         }
         if on.contains(.network), !network.isEmpty {
-            cells.append(driveCell(.network, name: "NET", read: networkDown, write: networkUp, temp: nil))
+            put(.network, driveCell(.network, name: "NET", read: networkDown, write: networkUp, temp: nil))
         }
         if on.contains(.power), let watts = power?.systemWatts {
-            cells.append(cell(.power, label: "PWR", value: String(format: "%.1f W", watts),
+            put(.power, cell(.power, label: "PWR", value: String(format: "%.1f W", watts),
                               short: String(format: "%.1f W", watts),
                               samples: ["PWR", "88.8 W"], shortSamples: ["88.8 W"]))
         }
@@ -113,7 +115,7 @@ extension Monitor {
             var built = cell(.thermal, label: "TEMP", value: fan.map { avg == nil ? $0 : " " + $0 } ?? "",
                              samples: ["TEMP", "212° 9999rpm"], shortSamples: ["99° 9999rpm"])
             if let avg { built.accent = (avg, .systemRed); built.accentFirst = true }
-            cells.append(built)
+            put(.thermal, built)
         }
         for (item, label, load) in [(MonitorItem.cpu, "CPU", cpu), (.gpu, "GPU", gpu)] {
             guard on.contains(item), let load else { continue }
@@ -125,9 +127,10 @@ extension Monitor {
             var built = cell(item, label: label, value: percent, short: percent,
                              samples: [label, sample], shortSamples: ["99%"], fraction: load)
             if let temp { built.accent = (temp, .systemRed) }   // red temperature, like the panel
-            cells.append(built)
+            put(item, built)
         }
-        return cells
+        let order = MonitorItem.allCases
+        return placed.sorted { (order.firstIndex(of: $0.item) ?? 0) < (order.firstIndex(of: $1.item) ?? 0) }.map(\.cell)
     }
 
     /// The lowest battery level among the Mac's own battery and connected devices.
