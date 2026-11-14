@@ -269,4 +269,35 @@ final class CollectorTests: XCTestCase {
             XCTAssertFalse(NetworkCollector.isPhysical(name), name)
         }
     }
+
+    func testSmartStatusParsing() {
+        func plist(_ status: String) -> Data {
+            "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>SMARTStatus</key><string>\(status)</string></dict></plist>".data(using: .utf8)!
+        }
+        XCTAssertEqual(DiskSpaceCollector.parseSmart(plist: plist("Verified")), .verified)
+        XCTAssertEqual(DiskSpaceCollector.parseSmart(plist: plist("Failing")), .failing)
+        XCTAssertNil(DiskSpaceCollector.parseSmart(plist: plist("Not Supported")))
+        XCTAssertNil(DiskSpaceCollector.parseSmart(plist: Data()))
+    }
+
+    func testVolumeSpaceText() {
+        let v = VolumeSpace(name: "X", totalBytes: 1_000_000_000_000, freeBytes: 412_000_000_000, isInternal: true)
+        XCTAssertEqual(v.usedFraction, 0.588, accuracy: 0.001)
+        XCTAssertTrue(v.freeText.hasSuffix("free"))
+        XCTAssertFalse(DiskSpaceCollector().volumes().isEmpty)
+    }
+
+    func testProcessCPUPercent() {
+        XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 0, newNs: 500_000_000, seconds: 1), 50, accuracy: 0.001)
+        XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 0, newNs: 2_000_000_000, seconds: 1), 200, accuracy: 0.001)
+        XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 10, newNs: 5, seconds: 1), 0)
+    }
+
+    func testProcessSweepFindsThisProcess() {
+        let collector = ProcessCollector()
+        _ = collector.sample()
+        let mine = collector.sample().first { $0.pid == getpid() }
+        XCTAssertNotNil(mine)
+        XCTAssertGreaterThan(mine?.footprintBytes ?? 0, 0)
+    }
 }

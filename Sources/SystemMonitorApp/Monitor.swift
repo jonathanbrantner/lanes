@@ -31,6 +31,11 @@ struct MonitorState {
     var powerHistory: [Double] = []     // watts
     var driveHistory: [String: [DriveSample]] = [:]
     var network: [NetworkRate] = []
+    var topByCPU: [ProcessUsage] = []      // only while the CPU or Memory page is open
+    var topByMemory: [ProcessUsage] = []
+    var thermalPressure: ProcessInfo.ThermalState = .nominal
+    var volumes: [String: VolumeSpace] = [:]   // by volume name
+    var smart: [String: SmartStatus] = [:]     // by BSD name (disk4)
     var networkHistory: [String: [DriveSample]] = [:]   // read = download, write = upload, MB/s
 }
 
@@ -78,7 +83,8 @@ final class Monitor: ObservableObject {
         sampler?.configure(shown: settings.menuBarItems.union(settings.panelItems),
                           interval: settings.updateInterval, chip: settings.chip,
                           temperatures: settings.showTemperatures,
-                          cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible)
+                          cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible,
+                          processes: settings.processesVisible)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -104,6 +110,11 @@ final class Monitor: ObservableObject {
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
     var network: [NetworkRate] { state.network }
     var networkHistory: [String: [DriveSample]] { state.networkHistory }
+    var topByCPU: [ProcessUsage] { state.topByCPU }
+    var topByMemory: [ProcessUsage] { state.topByMemory }
+    var thermalPressure: ProcessInfo.ThermalState { state.thermalPressure }
+    var volumes: [String: VolumeSpace] { state.volumes }
+    var smart: [String: SmartStatus] { state.smart }
     var networkDown: Double { state.network.reduce(0) { $0 + $1.downMBps } }
     var networkUp: Double { state.network.reduce(0) { $0 + $1.upMBps } }
 
@@ -133,6 +144,9 @@ private final class Sampler {
     private let gpu = GPUCollector()
     private let power = PowerCollector()
     private lazy var networkCollector = NetworkCollector()
+    private let diskSpace = DiskSpaceCollector()
+    private let processCollector = ProcessCollector()
+    private var processes = false
     private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
     private var chip = ChipFamily.detect()
     private var temperatures = true
@@ -154,19 +168,22 @@ private final class Sampler {
     }
 
     func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool,
-                   cpuCores: Bool, gpuDetail: Bool) {
+                   cpuCores: Bool, gpuDetail: Bool, processes: Bool) {
         queue.async { [weak self] in
             guard let self else { return }
             let coresOpened = cpuCores && !self.cpuCores
             let gpuOpened = gpuDetail && !self.gpuDetail
             self.shown = shown
+            let processesOpened = processes && !self.processes
+            if processes != self.processes { self.processCollector.reset(); self.processes = processes }
+            if processesOpened { _ = self.processCollector.sample() }   // baseline for the first CPU numbers
             self.temperatures = temperatures
             self.cpuCores = cpuCores
             self.gpuDetail = gpuDetail
             // Opening a detail view: take the baseline now and show real numbers after 1 s,
             // instead of "Waiting for data" for a whole update interval.
             if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
-            if coresOpened || gpuOpened {
+            if coresOpened || gpuOpened || processesOpened {
                 self.detailRefresh?.cancel()   // pages opened quickly one after another: keep only the last
                 let work = DispatchWorkItem { [weak self] in self?.refreshDetail() }
                 self.detailRefresh = work
@@ -250,8 +267,40 @@ private final class Sampler {
         }
 
         sampleNetwork()
+        sampleDiskSpace()
+        sampleProcesses()
+        state.thermalPressure = ProcessInfo.processInfo.thermalState
 
         onSample?(state)
+    }
+
+    /// Busiest apps, every ~3 s, only while the CPU or Memory page is open.
+    private func sampleProcesses() {
+        guard processes else {
+            state.topByCPU = []
+            state.topByMemory = []
+            return
+        }
+        let every = max(1, Int((3.0 / interval).rounded(.up)))
+        guard (tickCount - 1) % every == 0 || state.topByCPU.isEmpty else { return }
+        let all = processCollector.sample()
+        state.topByCPU = Array(all.filter { $0.cpuPercent > 0 }.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))
+        state.topByMemory = Array(all.sorted { $0.footprintBytes > $1.footprintBytes }.prefix(5))
+    }
+
+    /// Free space about every 30 s and health every 10 min, only while a drive item is shown.
+    private func sampleDiskSpace() {
+        guard shown.contains(.drives) || shown.contains(.disk) else {
+            state.volumes = [:]
+            state.smart = [:]
+            return
+        }
+        let every = max(1, Int((30.0 / interval).rounded()))
+        guard (tickCount - 1) % every == 0 || state.volumes.isEmpty else { return }
+        state.volumes = Dictionary(diskSpace.volumes().map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        var smart: [String: SmartStatus] = [:]
+        for drive in state.allDrives { if let s = diskSpace.smart(bsdName: drive.bsdName) { smart[drive.bsdName] = s } }
+        state.smart = smart
     }
 
     /// Download and upload per connection; averaged over the 5 s window like the drives.
@@ -289,6 +338,7 @@ private final class Sampler {
     /// Light refresh used right after a detail view opens: cores, GPU detail and the thermal groups.
     private func refreshDetail() {
         sampleCores()
+        sampleProcesses()
         state.gpuDetail = (gpuDetail && shown.contains(.gpu)) ? gpu.details() : nil
         state.thermal = nil   // forces a thermal read now, so the new groups appear with the cores
         sampleThermal()

@@ -79,6 +79,15 @@ enum ScreenshotMode {
         s.network = [NetworkRate(bsdName: "en0", label: "Wi-Fi", downBytesPerSec: 3.2e6, upBytesPerSec: 0.4e6)]
         s.networkHistory = ["en0": (0..<60).map { i in let t = Double(i) / 59; return DriveSample(read: 2 + 3 * abs(sin(t * 8)), write: 0.2 + 0.5 * abs(sin(t * 5))) }]
         s.compressedHistory = curve(60) { 3.3e9 + 0.2e9 * sin($0 * 6) }
+        s.volumes = ["Work SSD": VolumeSpace(name: "Work SSD", totalBytes: 1_000_000_000_000, freeBytes: 412_000_000_000, isInternal: false),
+                     "Macintosh HD": VolumeSpace(name: "Macintosh HD", totalBytes: 500_000_000_000, freeBytes: 210_000_000_000, isInternal: true)]
+        s.smart = ["disk4": .verified, "disk0": .verified]
+        s.topByCPU = [ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000),
+                      ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000),
+                      ProcessUsage(pid: 3, name: "WindowServer", cpuPercent: 6, footprintBytes: 400_000_000)]
+        s.topByMemory = [ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000),
+                         ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000),
+                         ProcessUsage(pid: 4, name: "Slack", cpuPercent: 1, footprintBytes: 620_000_000)]
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,
                             readBytesPerSec: 412e6, writeBytesPerSec: 186e6)
         let internalDisk = DriveRate(bsdName: "disk0", label: "Internal SSD", model: "Demo", isInternal: true,

@@ -79,6 +79,8 @@ final class Settings: ObservableObject {
     /// The core views are only worth sampling while their page is open is open.
     var cpuCoresVisible: Bool { openDetail == .cpu }
     var gpuDetailVisible: Bool { openDetail == .gpu }
+    /// The busiest-apps lists are only read while the CPU or Memory page is open.
+    var processesVisible: Bool { openDetail == .cpu || openDetail == .memory }
 
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {

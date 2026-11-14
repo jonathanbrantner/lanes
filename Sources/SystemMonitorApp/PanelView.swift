@@ -109,6 +109,10 @@ struct PanelView: View {
                 Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.red)
             }
+            if let label = pressureText(monitor.thermalPressure) {
+                Text("·").foregroundStyle(.secondary)
+                Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
+            }
             if let fan = monitor.thermal?.fans.first {
                 Text("·").foregroundStyle(.secondary)
                 Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
@@ -150,6 +154,25 @@ struct PanelView: View {
         return zoomed(samples.map { $0.read + $0.write }, minSpan: 1, floor: 0, padding: 0.5)
     }
 
+    /// Free space of the volume that belongs to this drive (matched by volume name; the internal
+    /// disk falls back to the largest internal volume).
+    private func space(for drive: DriveRate) -> VolumeSpace? {
+        let volumes = monitor.volumes
+        if let match = volumes[drive.label] { return match }
+        if let part = drive.label.components(separatedBy: ", ").compactMap({ volumes[$0] }).first { return part }
+        return drive.isInternal ? volumes.values.filter(\.isInternal).max { $0.totalBytes < $1.totalBytes } : nil
+    }
+
+    /// "SMART ✓" when macOS verifies the drive, "SMART ✗" in red when it reports failing; nothing otherwise.
+    private func smartMark(_ bsd: String) -> String? {
+        switch monitor.smart[bsd] {
+        case .verified: "SMART ✓"
+        case .failing: "SMART ✗"
+        case nil: nil
+        }
+    }
+    private func smartColor(_ bsd: String) -> Color { monitor.smart[bsd] == .failing ? .red : .green }
+
     private func tileData(_ item: MonitorItem) -> TileData? {
         switch item {
         case .cpu:
@@ -187,7 +210,8 @@ struct PanelView: View {
                             name: drives.count == 1 ? first.label : "\(drives.count) drives", color: item.color,
                             big: Monitor.speed(monitor.externalRead + monitor.externalWrite),
                             small: "", rates: rates(monitor.externalRead, monitor.externalWrite),
-                            corner: nil, history: driveHistory(first))
+                            corner: smartMark(first.bsdName), cornerColor: smartColor(first.bsdName),
+                            footnote: space(for: first)?.freeText, history: driveHistory(first))
         case .disk:
             guard let drive = monitor.internalDrive else {
                 return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
@@ -196,7 +220,9 @@ struct PanelView: View {
             return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
                             big: Monitor.speed(drive.readMBps + drive.writeMBps),
                             small: "", rates: rates(drive.readMBps, drive.writeMBps),
-                            corner: shownTemp(monitor.thermal?.ssdC), history: driveHistory(drive))
+                            corner: shownTemp(monitor.thermal?.ssdC) ?? smartMark(drive.bsdName),
+                            cornerColor: shownTemp(monitor.thermal?.ssdC) == nil ? smartColor(drive.bsdName) : .red,
+                            footnote: space(for: drive)?.freeText, history: driveHistory(drive))
         case .network:
             guard !monitor.network.isEmpty else {
                 return TileData(id: item, symbol: item.symbol, name: "Network", color: item.color,
@@ -234,7 +260,7 @@ struct PanelView: View {
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.cpuHistory),
                                   temp: shownTemp(monitor.thermal?.cpuC),
-                                  detail: { cpuCoresView })
+                                  detail: { VStack(alignment: .leading, spacing: 8) { cpuCoresView; busiestApps(byMemory: false) } })
         case .gpu: percentSection(.gpu, value: monitor.gpu,
                                   history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
                                   scrub: loadScrub(monitor.gpuHistory),
@@ -242,6 +268,29 @@ struct PanelView: View {
                                   detail: { gpuDetailView })
         default: EmptyView()
         }
+    }
+
+    // MARK: Busiest apps
+
+    /// The five busiest apps by CPU or by memory, on the CPU and Memory pages.
+    private func busiestApps(byMemory: Bool) -> some View {
+        let list = byMemory ? monitor.topByMemory : monitor.topByCPU
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(byMemory ? "Most memory" : "Busiest apps").font(.caption.weight(.semibold))
+            if list.isEmpty { Text("Waiting for data").font(.caption).foregroundStyle(.secondary) }
+            ForEach(list, id: \.pid) { p in
+                HStack {
+                    Text(p.name).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(byMemory ? bytes(p.footprintBytes) : String(format: "%.0f%%", p.cpuPercent))
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: Network
@@ -324,6 +373,7 @@ struct PanelView: View {
                     if ram.otherBytes > 0 { legend("Other", ram.otherBytes, .gray) }
                 }
                 .font(.caption)
+                busiestApps(byMemory: true)
                 HStack {
                     Text("Cached files \(bytes(ram.cachedBytes))")
                     Spacer()
@@ -479,6 +529,17 @@ struct PanelView: View {
 
     private func bytes(_ value: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .memory)
+    }
+
+    /// macOS's own thermal state; nothing is shown while it is "nominal".
+    private func pressureText(_ state: ProcessInfo.ThermalState) -> String? {
+        switch state {
+        case .nominal: nil
+        case .fair: "Warm"
+        case .serious: "Throttling"
+        case .critical: "Throttling hard"
+        @unknown default: nil
+        }
     }
 
     private func pressureLabel(_ p: MemoryPressure) -> String {

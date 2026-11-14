@@ -13,6 +13,8 @@ struct TileData: Identifiable {
     /// Top right corner: a temperature, or a warning such as memory pressure.
     var corner: String?
     var cornerColor: Color = .red
+    /// Right of the drive speeds when there is room, e.g. "412 GB free".
+    var footnote: String?
     /// 0...1 values for the little graph.
     let history: [Double]
 }
@@ -48,7 +50,7 @@ struct Tile: View {
             Text(data.big).font(.system(size: 20, weight: .semibold)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
             if let rates = data.rates {
-                HStack(spacing: 8) {
+                let speeds = HStack(spacing: 8) {
                     HStack(spacing: 2) {
                         Text("↓").foregroundStyle(Color(nsColor: .systemBlue))
                         Text(rates.read).foregroundStyle(.secondary)
@@ -57,6 +59,13 @@ struct Tile: View {
                         Text("↑").foregroundStyle(Color(nsColor: .systemOrange))
                         Text(rates.write).foregroundStyle(.secondary)
                     }
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        speeds
+                        if let footnote = data.footnote { Spacer(minLength: 2); Text(footnote).foregroundStyle(.tertiary) }
+                    }
+                    speeds
                 }
                 .font(.system(size: 10, weight: .medium)).lineLimit(1)
             } else {
