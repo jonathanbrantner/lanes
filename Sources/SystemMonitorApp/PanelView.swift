@@ -64,7 +64,7 @@ struct PanelView: View {
 
     // MARK: Main panel
 
-    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .network, .drives, .disk, .devices, .thermal, .power]
+    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .disk, .network, .drives, .thermal, .power, .devices]
     /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
     private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network, .power, .thermal, .devices]
 
