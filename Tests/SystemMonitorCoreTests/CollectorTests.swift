@@ -293,12 +293,13 @@ final class CollectorTests: XCTestCase {
         XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 10, newNs: 5, seconds: 1), 0)
     }
 
-    func testProcessSweepFindsThisProcess() {
+    func testProcessSweepFindsProcesses() {
         let collector = ProcessCollector()
         _ = collector.sample()
-        let mine = collector.sample().first { $0.pid == getpid() }
-        XCTAssertNotNil(mine)
-        XCTAssertGreaterThan(mine?.footprintBytes ?? 0, 0)
+        let sweep = collector.sample()
+        // Helpers are combined per app (the test runner itself is part of "Xcode"), so look at the whole sweep.
+        XCTAssertFalse(sweep.isEmpty)
+        XCTAssertTrue(sweep.contains { $0.footprintBytes > 0 && !$0.name.isEmpty })
     }
 
     func testSensorKindsAndNames() {
