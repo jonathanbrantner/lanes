@@ -15,7 +15,7 @@ More in this release
 - Network: download and upload for the connections in use (Wi-Fi, Ethernet; idle ones are hidden), with a tile, a page with a graph per connection, and a menu bar cell.
 - Drives show free space on the tile, and a red "SMART" warning if macOS reports a drive failing.
 - Batteries: the Mac's own battery on laptops and connected Bluetooth devices (AirPods, mouse, keyboard) in one strip with an arrow; click it for a page with a bar for every part (left, right, case).
-- Busiest apps by CPU on the CPU page and by memory on the Memory page (read only while that page is open): readable names, helper processes added to their app, the app icon and a bar.
+- Busiest apps by CPU on the CPU page and by memory on the Memory page (read only while that page is open): readable names, helper processes added to their app, the app icon and a bar; CPU is a share of the whole chip, so it never passes 100%.
 - Sensors page (click the Avg temp tile): CPU, GPU, memory and SSD temperatures, the chip sensors as one line (average and highest), fans and power, with every reading one click away; and a warning when macOS is throttling. The Power tile opens a Power page: the draw over time, as a table: system, CPU, GPU, ports, fan and everything else.
 - Menu bar: Names or Icons, with red temperatures and steady widths so the bar does not bounce. The Display settings are three rows: Temperatures, Panel (Grid or Rows) and Menu bar.
 - Graph hover: hover a graph on a page to see the exact value and how long ago.

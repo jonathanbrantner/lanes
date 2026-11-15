@@ -421,20 +421,22 @@ struct PanelView: View {
     /// to their app, each row has the app's icon and a thin bar relative to the top one.
     private func busiestApps(byMemory: Bool) -> some View {
         let list = byMemory ? monitor.topByMemory : monitor.topByCPU
-        let top = max(list.map { byMemory ? Double($0.footprintBytes) : $0.cpuPercent }.max() ?? 1, 1)
+        // CPU as a share of the whole chip (like the CPU number at the top), so it never passes 100%.
+        let cores = Double(max(ProcessInfo.processInfo.activeProcessorCount, 1))
+        let top = max(list.map { byMemory ? Double($0.footprintBytes) : $0.cpuPercent / cores }.max() ?? 1, 1)
         return VStack(alignment: .leading, spacing: 6) {
             Text(byMemory ? "MOST MEMORY" : "BUSIEST APPS")
                 .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).tracking(0.5)
             if list.isEmpty { Text("Waiting for data").font(.caption).foregroundStyle(.secondary) }
             ForEach(list, id: \.name) { p in
-                let value = byMemory ? Double(p.footprintBytes) : p.cpuPercent
+                let value = byMemory ? Double(p.footprintBytes) : p.cpuPercent / cores
                 HStack(spacing: 8) {
                     appIcon(p.appPath).frame(width: 16, height: 16)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text(p.name).lineLimit(1).truncationMode(.tail)
                             Spacer(minLength: 6)
-                            Text(byMemory ? bytes(p.footprintBytes) : String(format: "%.0f%%", p.cpuPercent))
+                            Text(byMemory ? bytes(p.footprintBytes) : String(format: "%.0f%%", p.cpuPercent / cores))
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
                         .font(.system(size: 11))
