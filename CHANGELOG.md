@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0 (unreleased): new interface
+## 2.0.0 (2026-11-15): new interface
 
 Version 2.0 redesigns the panel and adds temperatures, per-core details and a simpler Settings screen.
 
