@@ -464,38 +464,38 @@ struct PanelView: View {
 
     // MARK: Power
 
-    /// Power page: the system's draw over time, then where it comes from and goes.
+    /// Power page: the system's draw over time, split into the processor and the rest of the Mac.
     private var powerSection: some View {
-        let known = monitor.sensors.filter { $0.kind == .power && SensorsCollector.isKnown($0.name) }
+        let system = monitor.power?.systemWatts
+        let package = monitor.sensors.first { $0.kind == .power && $0.name == "Processor package power" }?.value
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 header(.power)
                 Spacer()
-                Text(monitor.power?.systemWatts.map { String(format: "%.1f W", $0) } ?? "n/a").monospacedDigit()
+                Text(system.map { String(format: "%.1f W", $0) } ?? "n/a").font(.headline).monospacedDigit()
             }
             HistoryChart(values: zoomed(monitor.powerHistory, minSpan: 2, floor: 0, padding: 0.5), color: MonitorItem.power.color,
                          scrub: scrub(monitor.powerHistory) { String(format: "%.1f W", $0) }).frame(height: 40)
-            VStack(spacing: 4) {
-                ForEach(known.indices, id: \.self) { i in
+            if let system, let package {
+                VStack(spacing: 4) {
                     HStack {
-                        Text(known[i].name).foregroundStyle(.secondary)
-                        Spacer(minLength: 6)
-                        Text(sensorText(known[i])).monospacedDigit()
+                        Text("Processor").foregroundStyle(.secondary)
+                        Spacer()
+                        Text(String(format: "%.1f W", package)).monospacedDigit()
                     }
-                    .font(.system(size: 12))
-                }
-                if let gpu = monitor.power?.gpuWatts {
                     HStack {
-                        Text("GPU").foregroundStyle(.secondary)
-                        Spacer(minLength: 6)
-                        Text(String(format: "%.2f W", gpu)).monospacedDigit()
+                        Text("Rest of the Mac").foregroundStyle(.secondary)
+                        Spacer()
+                        Text(String(format: "%.1f W", max(0, system - package))).monospacedDigit()
                     }
-                    .font(.system(size: 12))
                 }
+                .font(.system(size: 12))
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                Text("Rest of the Mac is memory, SSD, fans and anything on the ports.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 
