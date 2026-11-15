@@ -464,10 +464,24 @@ struct PanelView: View {
 
     // MARK: Power
 
-    /// Power page: the system's draw over time, split into the processor and the rest of the Mac.
+    /// Power page: the system's draw over time, then a table of where it goes.
     private var powerSection: some View {
         let system = monitor.power?.systemWatts
         let package = monitor.sensors.first { $0.kind == .power && $0.name == "Processor package power" }?.value
+        let gpu = monitor.power?.gpuWatts
+        let ports = monitor.power?.portsWatts
+        // Rows: (name, value text, note). The processor package includes the GPU, so CPU = package - GPU.
+        var rows: [(String, String, String)] = []
+        if let system { rows.append(("System", String(format: "%.1f W", system), "total from the wall")) }
+        if let package {
+            rows.append(("CPU", String(format: "%.1f W", max(0, package - (gpu ?? 0))), "estimate"))
+        }
+        if let gpu { rows.append(("GPU", String(format: "%.2f W", gpu), "")) }
+        if let ports { rows.append(("Ports", String(format: "%.2f W", ports), "controllers only")) }
+        if let fan = monitor.thermal?.fans.first { rows.append(("Fan", String(format: "%.0f rpm", fan.rpm), "no power reading")) }
+        if let system, let package {
+            rows.append(("Everything else", String(format: "%.1f W", max(0, system - package - (ports ?? 0))), "memory, SSD, devices"))
+        }
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 header(.power)
@@ -476,26 +490,23 @@ struct PanelView: View {
             }
             HistoryChart(values: zoomed(monitor.powerHistory, minSpan: 2, floor: 0, padding: 0.5), color: MonitorItem.power.color,
                          scrub: scrub(monitor.powerHistory) { String(format: "%.1f W", $0) }).frame(height: 40)
-            if let system, let package {
-                VStack(spacing: 4) {
-                    HStack {
-                        Text("Processor").foregroundStyle(.secondary)
-                        Spacer()
-                        Text(String(format: "%.1f W", package)).monospacedDigit()
-                    }
-                    HStack {
-                        Text("Rest of the Mac").foregroundStyle(.secondary)
-                        Spacer()
-                        Text(String(format: "%.1f W", max(0, system - package))).monospacedDigit()
+            VStack(spacing: 5) {
+                ForEach(rows.indices, id: \.self) { i in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(rows[i].0).font(.system(size: 12, weight: i == 0 ? .semibold : .regular))
+                        Spacer(minLength: 6)
+                        if !rows[i].2.isEmpty {
+                            Text(rows[i].2).font(.system(size: 10)).foregroundStyle(.tertiary)
+                        }
+                        Text(rows[i].1).font(.system(size: 12)).monospacedDigit().frame(width: 62, alignment: .trailing)
                     }
                 }
-                .font(.system(size: 12))
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                Text("Rest of the Mac is memory, SSD, fans and anything on the ports.")
-                    .font(.caption2).foregroundStyle(.secondary)
             }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            Text("macOS does not report what a device on a port draws, so that sits in the last row.")
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 

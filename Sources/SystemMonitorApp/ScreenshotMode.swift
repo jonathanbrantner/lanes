@@ -73,7 +73,7 @@ enum ScreenshotMode {
         s.avgTempHistory = curve(60) { 40 + 3 * sin($0 * 7) + 2 * $0 }
         s.gpu = 0.06
         s.gpuHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 20)) }
-        s.power = PowerSnapshot(systemWatts: 9.8, gpuWatts: 0.12)
+        s.power = PowerSnapshot(systemWatts: 9.8, gpuWatts: 0.12, portsWatts: 0.02)
         s.powerHistory = curve(60) { 7 + 2 * abs(sin($0 * 6)) + ($0 > 0.75 ? 9 * sin(($0 - 0.75) * 12) : 0) }
         s.thermal = ThermalSnapshot(cpuC: 46, gpuC: 42, ramC: 39, ssdC: 38,
                                     fans: [FanReading(rpm: 1800, minRPM: 1000, maxRPM: 4900)],

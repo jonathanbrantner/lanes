@@ -57,6 +57,16 @@ if args.contains("--memory") {
     exit(0)
 }
 
+if args.contains("--power-keys") {
+    _ = lanes_smc_open()
+    for key in SMCKeys.all() where key.hasPrefix("P") {
+        var v = 0.0
+        var type = [CChar](repeating: 0, count: 5)
+        if lanes_smc_read_number(key, &v, &type) == 1, v != 0 { print(String(format: "  %@ (%@) %.3f", key as NSString, String(cString: type) as NSString, v)) }
+    }
+    exit(0)
+}
+
 if args.contains("--processes") {
     let c = ProcessCollector()
     _ = c.sample()
