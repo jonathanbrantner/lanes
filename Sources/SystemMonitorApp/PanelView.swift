@@ -495,9 +495,6 @@ struct PanelView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(rows[i].0).font(.system(size: 12, weight: i == 0 ? .semibold : .regular))
                         Spacer(minLength: 6)
-                        if !rows[i].2.isEmpty {
-                            Text(rows[i].2).font(.system(size: 10)).foregroundStyle(.tertiary)
-                        }
                         Text(rows[i].1).font(.system(size: 12)).monospacedDigit().frame(width: 62, alignment: .trailing)
                     }
                 }
