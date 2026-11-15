@@ -4,7 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-scripts/make-app.sh
+# Public downloads are signed ad hoc, never with a personal certificate.
+LANES_SIGN_IDENTITY=- scripts/make-app.sh
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' build/Lanes.app/Contents/Info.plist)"
 ZIP="build/Lanes-${VERSION}.zip"
 

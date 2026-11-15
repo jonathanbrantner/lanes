@@ -23,6 +23,74 @@ if args.contains("--smc-test") {
     exit(0)
 }
 
+// --memory: every page counter and both ways of computing "Memory Used", to compare with Activity
+// Monitor on a Mac where the number looks off.
+if args.contains("--memory") {
+    var stats = vm_statistics64_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
+    _ = withUnsafeMutablePointer(to: &stats) { ptr in
+        ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+            host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+        }
+    }
+    var hostPage: vm_size_t = 0
+    _ = host_page_size(mach_host_self(), &hostPage)
+    let page = Double(hostPage)
+    func gb(_ pages: UInt64) -> String { String(format: "%.2f GB", Double(pages) * page / 1_073_741_824) }
+    let total = Double(ProcessInfo.processInfo.physicalMemory)
+    print("page size \(hostPage) B (getpagesize \(getpagesize())), total \(String(format: "%.2f", total / 1_073_741_824)) GB")
+    for (name, v) in [("free", UInt64(stats.free_count)), ("speculative", UInt64(stats.speculative_count)),
+                      ("active", UInt64(stats.active_count)), ("inactive", UInt64(stats.inactive_count)),
+                      ("wired", UInt64(stats.wire_count)), ("internal (anonymous)", UInt64(stats.internal_page_count)),
+                      ("external (file-backed)", UInt64(stats.external_page_count)),
+                      ("purgeable", UInt64(stats.purgeable_count)),
+                      ("compressor", UInt64(stats.compressor_page_count))] {
+        print(String(format: "  %-24@ %12llu pages  %@", name as NSString, v, gb(v) as NSString))
+    }
+    let app = UInt64(max(0, Int64(stats.internal_page_count) - Int64(stats.purgeable_count)))
+    let parts = app + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)
+    let freeNoSpec = UInt64(max(0, Int64(stats.free_count) - Int64(stats.speculative_count)))
+    let byFree = UInt64(total / page) - freeNoSpec - UInt64(stats.external_page_count)
+    print("Used = app + wired + compressed          \(gb(parts))")
+    print("Used = total - free - file-backed (Lanes) \(gb(byFree))")
+    print("Compare with Activity Monitor > Memory Used.")
+    exit(0)
+}
+
+if args.contains("--power-keys") {
+    _ = lanes_smc_open()
+    for key in SMCKeys.all() where key.hasPrefix("P") {
+        var v = 0.0
+        var type = [CChar](repeating: 0, count: 5)
+        if lanes_smc_read_number(key, &v, &type) == 1, v != 0 { print(String(format: "  %@ (%@) %.3f", key as NSString, String(cString: type) as NSString, v)) }
+    }
+    exit(0)
+}
+
+if args.contains("--processes") {
+    let c = ProcessCollector()
+    _ = c.sample()
+    Thread.sleep(forTimeInterval: 2)
+    let t0 = Date()
+    let all = c.sample()
+    print(String(format: "one sweep: %.0f ms, %d apps", Date().timeIntervalSince(t0) * 1000, all.count))
+    print("By CPU:", all.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5).map { "\($0.name) \(Int($0.cpuPercent))%" })
+    print("By memory:", all.sorted { $0.footprintBytes > $1.footprintBytes }.prefix(6).map { "\($0.name) \($0.footprintBytes / 1_000_000) MB" })
+    exit(0)
+}
+
+if args.contains("--logitech") {
+    runLogitechProbe()
+    exit(0)
+}
+
+if args.contains("--batteries") {
+    print("Bluetooth:", DeviceBatteries.bluetooth().map { "\($0.name) \($0.parts)" })
+    print("Logitech receiver:", LogitechReceiver.batteries().map { "\($0.name) \($0.parts)" })
+    print("Laptop:", DeviceBatteries.laptop().map { "\($0)" } ?? "none")
+    exit(0)
+}
+
 if args.contains("--cluster-probe") {
     runClusterProbe(efficiencyOnly: args.contains("--e-only"))
     exit(0)

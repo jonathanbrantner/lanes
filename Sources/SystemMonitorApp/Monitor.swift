@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import IOKit.hid
 import SystemMonitorCore
 
 struct DriveSample {
@@ -11,6 +12,7 @@ struct DriveSample {
 struct MonitorState {
     var ram: RAMSnapshot?
     var cpu: Double?
+    var avgTempHistory: [Double] = []   // degrees C, kept while Avg temp is shown
     var gpu: Double?
     var power: PowerSnapshot?
     var thermal: ThermalSnapshot?
@@ -25,10 +27,21 @@ struct MonitorState {
     var gpuSensorHistory: [[Double]] = []   // one series per GPU temperature sensor, degrees C
     var allDrives: [DriveRate] = []
     var ramHistory: [Double] = []
+    var compressedHistory: [Double] = []   // bytes, kept while Memory is shown
     var cpuHistory: [Double] = []
     var gpuHistory: [Double] = []
     var powerHistory: [Double] = []     // watts
     var driveHistory: [String: [DriveSample]] = [:]
+    var network: [NetworkRate] = []
+    var deviceBatteries: [DeviceBattery] = []
+    var laptopBattery: LaptopBattery?
+    var sensors: [SensorReading] = []      // only while the sensors page is open
+    var topByCPU: [ProcessUsage] = []      // only while the CPU or Memory page is open
+    var topByMemory: [ProcessUsage] = []
+    var thermalPressure: ProcessInfo.ThermalState = .nominal
+    var volumes: [String: VolumeSpace] = [:]   // by volume name
+    var smart: [String: SmartStatus] = [:]     // by BSD name (disk4)
+    var networkHistory: [String: [DriveSample]] = [:]   // read = download, write = upload, MB/s
 }
 
 /// Runs the collectors on a low-priority queue (scheduled on efficiency cores) and publishes
@@ -39,8 +52,54 @@ final class Monitor: ObservableObject {
     @Published private(set) var state = MonitorState()
     /// Which logical CPU is which kind of core. Read on first use (when a core view first opens), once.
     private(set) lazy var topology = CPUTopology.detect()
+    /// Number of GPU cores, read once (nil if this Mac does not report it).
+    private(set) lazy var gpuCoreCount: Int? = GPUCollector().coreCount
 
     nonisolated static let historyLength = 60
+
+    /// Keyboard and mouse batteries from `BLEBatteryReader` (opt-in), refreshed about once a minute
+    /// while the Batteries item is shown.
+    @Published private(set) var bleBatteries: [DeviceBattery] = []
+    /// Logitech mice and keyboards on a USB receiver (HID++), read on a background queue.
+    @Published private(set) var logitechBatteries: [DeviceBattery] = []
+    /// What the last Logitech read did; Settings shows a hint when macOS blocked it.
+    @Published private(set) var logitechStatus = ""
+    private let bleReader = BLEBatteryReader()
+    private var bleTimer: Timer?
+
+    /// Starts or stops the Bluetooth LE reads to match the settings.
+    func updateBLEReading() {
+        let wanted = settings.menuBarItems.union(settings.panelItems).contains(.devices)   // only while Batteries is shown
+        if wanted, bleTimer == nil {
+            _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)   // makes macOS show its Input Monitoring prompt
+            readBLE()
+            bleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.readBLE() }
+            }
+        } else if !wanted, bleTimer != nil {
+            bleTimer?.invalidate()
+            bleTimer = nil
+            bleReader.stop()
+            bleBatteries = []
+            logitechBatteries = []
+        }
+    }
+
+    private func readBLE() {
+        if ProcessInfo.processInfo.environment["LANES_NO_BLE"] == nil {
+            bleReader.read { [weak self] devices in self?.bleBatteries = devices }
+        }
+        guard ProcessInfo.processInfo.environment["LANES_NO_LOGI"] == nil else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let found = LogitechReceiver.batteries()   // about a second; never on the sampler queue
+            let status = LogitechReceiver.lastStatus
+            DispatchQueue.main.async {
+                self?.logitechBatteries = found
+                self?.logitechStatus = status
+                UserDefaults.standard.set(status, forKey: "lastLogitechRead")   // readable with `defaults read`
+            }
+        }
+    }
 
     private let sampler: Sampler?
     private var cancellables = Set<AnyCancellable>()
@@ -70,10 +129,13 @@ final class Monitor: ObservableObject {
     }
 
     private func applySettings() {
+        updateBLEReading()
         sampler?.configure(shown: settings.menuBarItems.union(settings.panelItems),
                           interval: settings.updateInterval, chip: settings.chip,
                           temperatures: settings.showTemperatures,
-                          cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible)
+                          cpuCores: settings.cpuCoresVisible, gpuDetail: settings.gpuDetailVisible,
+                          processes: settings.processesVisible, sensors: settings.sensorsVisible,
+                          calibration: settings.memoryCalibration)
     }
 
     // MARK: Convenience accessors used by the panel and icon
@@ -84,6 +146,7 @@ final class Monitor: ObservableObject {
     var power: PowerSnapshot? { state.power }
     var thermal: ThermalSnapshot? { state.thermal }
     var coreUsage: [Double] { state.coreUsage }
+    var avgTempHistory: [Double] { state.avgTempHistory }
     var gpuDetail: GPUDetails? { state.gpuDetail }
     var coreHistory: [[Double]] { state.coreHistory }
     var gpuRendererHistory: [Double] { state.gpuRendererHistory }
@@ -92,10 +155,37 @@ final class Monitor: ObservableObject {
     var gpuMemoryHistory: [Double] { state.gpuMemoryHistory }
     var gpuSensorHistory: [[Double]] { state.gpuSensorHistory }
     var ramHistory: [Double] { state.ramHistory }
+    var compressedHistory: [Double] { state.compressedHistory }
     var cpuHistory: [Double] { state.cpuHistory }
     var gpuHistory: [Double] { state.gpuHistory }
     var powerHistory: [Double] { state.powerHistory }
     var driveHistory: [String: [DriveSample]] { state.driveHistory }
+    var network: [NetworkRate] { state.network }
+    var networkHistory: [String: [DriveSample]] { state.networkHistory }
+    /// Apple-listed devices plus, if switched on, keyboards and mice read over Bluetooth LE.
+    var deviceBatteries: [DeviceBattery] {
+        let known = Set(state.deviceBatteries.map(\.name))
+        return (state.deviceBatteries + (bleBatteries + logitechBatteries).filter { !known.contains($0.name) })
+            .sorted { $0.name < $1.name }
+    }
+    var laptopBattery: LaptopBattery? { state.laptopBattery }
+    var sensors: [SensorReading] { state.sensors }
+    var topByCPU: [ProcessUsage] { state.topByCPU }
+    var topByMemory: [ProcessUsage] { state.topByMemory }
+    var thermalPressure: ProcessInfo.ThermalState { state.thermalPressure }
+    var volumes: [String: VolumeSpace] { state.volumes }
+    var smart: [String: SmartStatus] { state.smart }
+    var networkDown: Double { state.network.reduce(0) { $0 + $1.downMBps } }
+    var networkUp: Double { state.network.reduce(0) { $0 + $1.upMBps } }
+
+    /// The connections worth showing: those that moved data in the last minute, else the first (usually
+    /// Wi-Fi). Idle ones (Thunderbolt ports, adapters) are hidden.
+    var activeNetwork: [NetworkRate] {
+        let moved = state.network.filter { rate in
+            (state.networkHistory[rate.bsdName] ?? []).contains { $0.read + $0.write > 0.01 }
+        }
+        return moved.isEmpty ? Array(state.network.prefix(1)) : moved
+    }
 
     /// External drives that are connected and not switched off in settings.
     var externalDrives: [DriveRate] {
@@ -122,6 +212,14 @@ private final class Sampler {
     private let cpu = CPUCollector()
     private let gpu = GPUCollector()
     private let power = PowerCollector()
+    private lazy var networkCollector = NetworkCollector()
+    private let diskSpace = DiskSpaceCollector()
+    private let processCollector = ProcessCollector()
+    private var processes = false
+    private var sensors = false
+    private var calibration: Int64 = 0
+    private var batteriesLoaded = false
+    private lazy var sensorsCollector = SensorsCollector()
     private var thermal: ThermalCollector?   // created on first use, rebuilt when the chip choice changes
     private var chip = ChipFamily.detect()
     private var temperatures = true
@@ -143,19 +241,25 @@ private final class Sampler {
     }
 
     func configure(shown: Set<MonitorItem>, interval: TimeInterval, chip: ChipFamily, temperatures: Bool,
-                   cpuCores: Bool, gpuDetail: Bool) {
+                   cpuCores: Bool, gpuDetail: Bool, processes: Bool, sensors: Bool, calibration: Int64) {
         queue.async { [weak self] in
             guard let self else { return }
             let coresOpened = cpuCores && !self.cpuCores
             let gpuOpened = gpuDetail && !self.gpuDetail
             self.shown = shown
+            self.calibration = calibration
+            let sensorsOpened = sensors && !self.sensors
+            self.sensors = sensors
+            let processesOpened = processes && !self.processes
+            if processes != self.processes { self.processCollector.reset(); self.processes = processes }
+            if processesOpened { _ = self.processCollector.sample() }   // baseline for the first CPU numbers
             self.temperatures = temperatures
             self.cpuCores = cpuCores
             self.gpuDetail = gpuDetail
             // Opening a detail view: take the baseline now and show real numbers after 1 s,
             // instead of "Waiting for data" for a whole update interval.
             if coresOpened { self.cpu.resetPerCore(); _ = self.cpu.perCoreUsage() }
-            if coresOpened || gpuOpened {
+            if coresOpened || gpuOpened || processesOpened || sensorsOpened {
                 self.detailRefresh?.cancel()   // pages opened quickly one after another: keep only the last
                 let work = DispatchWorkItem { [weak self] in self?.refreshDetail() }
                 self.detailRefresh = work
@@ -183,8 +287,9 @@ private final class Sampler {
 
         if shown.contains(.memory) {
             if tickCount % 5 == 1 { ram.refreshSwap() }      // swap changes slowly
-            state.ram = ram.snapshot()
+            state.ram = ram.snapshot()?.withCalibration(calibration)
             push(&state.ramHistory, state.ram?.usedFraction)
+            push(&state.compressedHistory, state.ram.map { Double($0.compressedBytes) })
         }
         if shown.contains(.cpu) {
             // Raw 1-tick sample feeds the chart; the displayed value is averaged over the
@@ -237,7 +342,92 @@ private final class Sampler {
                              writeBytesPerSec: (mean(h.map(\.write)) ?? r.writeMBps) * 1_000_000)
         }
 
+        sampleNetwork()
+        sampleDiskSpace()
+        sampleProcesses()
+        sampleSensors()
+        sampleBatteries()
+        state.thermalPressure = ProcessInfo.processInfo.thermalState
+
         onSample?(state)
+    }
+
+    /// Device and laptop batteries change slowly: once a minute, only while the item is shown.
+    private func sampleBatteries() {
+        guard shown.contains(.devices) else {
+            state.deviceBatteries = []
+            state.laptopBattery = nil
+            batteriesLoaded = false
+            return
+        }
+        let every = max(1, Int((60.0 / interval).rounded()))
+        guard (tickCount - 1) % every == 0 || !batteriesLoaded else { return }
+        batteriesLoaded = true
+        state.deviceBatteries = DeviceBatteries.bluetooth()
+        state.laptopBattery = DeviceBatteries.laptop()
+    }
+
+    /// Every reading this Mac offers, every ~3 s, only while the sensors page is open.
+    private func sampleSensors() {
+        guard sensors else { state.sensors = []; return }
+        let every = max(1, Int((3.0 / interval).rounded(.up)))
+        guard (tickCount - 1) % every == 0 || state.sensors.isEmpty else { return }
+        state.sensors = sensorsCollector.read()
+    }
+
+    /// Busiest apps, every ~3 s, only while the CPU or Memory page is open.
+    private func sampleProcesses() {
+        guard processes else {
+            state.topByCPU = []
+            state.topByMemory = []
+            return
+        }
+        let every = max(1, Int((3.0 / interval).rounded(.up)))
+        guard (tickCount - 1) % every == 0 || state.topByCPU.isEmpty else { return }
+        // Lanes itself is left out: opening the panel is a short burst that would show as a big number here.
+        let me = getpid()
+        let all = processCollector.sample().filter { $0.pid != me }
+        state.topByCPU = Array(all.filter { $0.cpuPercent > 0 }.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))
+        state.topByMemory = Array(all.sorted { $0.footprintBytes > $1.footprintBytes }.prefix(5))
+    }
+
+    /// Free space about every 30 s and health every 10 min, only while a drive item is shown.
+    private func sampleDiskSpace() {
+        guard shown.contains(.drives) || shown.contains(.disk) else {
+            state.volumes = [:]
+            state.smart = [:]
+            return
+        }
+        let every = max(1, Int((30.0 / interval).rounded()))
+        guard (tickCount - 1) % every == 0 || state.volumes.isEmpty else { return }
+        state.volumes = Dictionary(diskSpace.volumes().map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        var smart: [String: SmartStatus] = [:]
+        for drive in state.allDrives { if let s = diskSpace.smart(bsdName: drive.bsdName) { smart[drive.bsdName] = s } }
+        state.smart = smart
+    }
+
+    /// Download and upload per connection; averaged over the 5 s window like the drives.
+    private func sampleNetwork() {
+        guard shown.contains(.network) else {
+            state.network = []
+            state.networkHistory = [:]
+            return
+        }
+        let rates = networkCollector.rates()
+        var next: [String: [DriveSample]] = [:]
+        for r in rates {
+            var h = state.networkHistory[r.bsdName] ?? []
+            h.append(DriveSample(read: r.downMBps, write: r.upMBps))
+            if h.count > Monitor.historyLength { h.removeFirst(h.count - Monitor.historyLength) }
+            next[r.bsdName] = h
+        }
+        state.networkHistory = next
+        state.network = rates.map { r in
+            let h = next[r.bsdName]?.suffix(displayWindow) ?? []
+            return NetworkRate(bsdName: r.bsdName, label: r.label,
+                               downBytesPerSec: (mean(h.map(\.read)) ?? r.downMBps) * 1_000_000,
+                               upBytesPerSec: (mean(h.map(\.write)) ?? r.upMBps) * 1_000_000)
+        }
     }
 
     private func clearGPUDetail() {
@@ -251,6 +441,8 @@ private final class Sampler {
     /// Light refresh used right after a detail view opens: cores, GPU detail and the thermal groups.
     private func refreshDetail() {
         sampleCores()
+        sampleProcesses()
+        sampleSensors()
         state.gpuDetail = (gpuDetail && shown.contains(.gpu)) ? gpu.details() : nil
         state.thermal = nil   // forces a thermal read now, so the new groups appear with the cores
         sampleThermal()
@@ -300,6 +492,7 @@ private final class Sampler {
         guard (tickCount - 1) % every == 0 || state.thermal == nil else { return }
         if thermal == nil { thermal = ThermalCollector(chip: chip) }
         state.thermal = thermal?.snapshot(wanted: wanted)
+        if shown.contains(.thermal) { push(&state.avgTempHistory, state.thermal?.averageC) } else { state.avgTempHistory = [] }
         let sensors = state.thermal?.gpuSensorsC ?? []
         if sensors.isEmpty {
             state.gpuSensorHistory = []

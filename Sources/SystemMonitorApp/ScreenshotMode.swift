@@ -13,9 +13,8 @@ enum ScreenshotMode {
 
         let monitor = Monitor(demo: demoState())
         monitor.settings.menuBarItems = [.memory, .drives]
-        monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu]
+        monitor.settings.panelItems = [.memory, .drives, .disk, .power, .thermal, .cpu, .gpu, .network, .devices]
         monitor.settings.hiddenDrives = []
-        monitor.settings.coreDetails = true
 
         // Menu bar strip: the icon on a dark menu-bar-like background.
         let icon = IconRenderer.image(cells: monitor.iconCells())
@@ -27,12 +26,24 @@ enum ScreenshotMode {
         }
         write(strip, scale: 2, to: "\(outputDir)/menubar.png")
 
+        monitor.settings.panelList = true
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-rows.png")
+        monitor.settings.panelList = false
+
         // Panels: the real SwiftUI views on a rounded dark card, like the popover.
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel.png")
         monitor.settings.openDetail = .cpu
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-cpu.png")
         monitor.settings.openDetail = .gpu
         renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-gpu.png")
+        monitor.settings.openDetail = .power
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-power.png")
+        monitor.settings.openDetail = .thermal
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-sensors.png")
+        monitor.settings.openDetail = .devices
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-batteries.png")
+        monitor.settings.openDetail = .network
+        renderPanel(PanelView(monitor: monitor), to: "\(outputDir)/panel-network.png")
     }
 
     private static func renderPanel(_ panel: PanelView, to path: String) {
@@ -59,9 +70,10 @@ enum ScreenshotMode {
         s.ramHistory = curve(60) { 0.62 + 0.05 * sin($0 * 9) + 0.03 * $0 }
         s.cpu = 0.14
         s.cpuHistory = curve(60) { 0.10 + 0.08 * abs(sin($0 * 14)) + ($0 > 0.7 ? 0.25 * sin(($0 - 0.7) * 10) : 0) }
+        s.avgTempHistory = curve(60) { 40 + 3 * sin($0 * 7) + 2 * $0 }
         s.gpu = 0.06
         s.gpuHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 20)) }
-        s.power = PowerSnapshot(systemWatts: 9.8, gpuWatts: 0.12)
+        s.power = PowerSnapshot(systemWatts: 9.8, gpuWatts: 0.12, portsWatts: 0.02)
         s.powerHistory = curve(60) { 7 + 2 * abs(sin($0 * 6)) + ($0 > 0.75 ? 9 * sin(($0 - 0.75) * 12) : 0) }
         s.thermal = ThermalSnapshot(cpuC: 46, gpuC: 42, ramC: 39, ssdC: 38,
                                     fans: [FanReading(rpm: 1800, minRPM: 1000, maxRPM: 4900)],
@@ -77,6 +89,29 @@ enum ScreenshotMode {
         s.gpuRendererHistory = curve(60) { 0.02 + 0.05 * max(0, sin($0 * 17)) }
         s.gpuTilerHistory = curve(60) { 0.01 + 0.03 * max(0, sin($0 * 13 + 1)) }
         s.gpuSensorHistory = (0..<12).map { i in curve(30) { 41 + 1.5 * sin($0 * 6 + Double(i)) + 0.8 * Double(i % 3) } }
+        s.network = [NetworkRate(bsdName: "en0", label: "Wi-Fi", downBytesPerSec: 3.2e6, upBytesPerSec: 0.4e6)]
+        s.networkHistory = ["en0": (0..<60).map { i in let t = Double(i) / 59; return DriveSample(read: 2 + 3 * abs(sin(t * 8)), write: 0.2 + 0.5 * abs(sin(t * 5))) }]
+        s.compressedHistory = curve(60) { 3.3e9 + 0.2e9 * sin($0 * 6) }
+        s.volumes = ["Work SSD": VolumeSpace(name: "Work SSD", totalBytes: 1_000_000_000_000, freeBytes: 412_000_000_000, isInternal: false),
+                     "Macintosh HD": VolumeSpace(name: "Macintosh HD", totalBytes: 500_000_000_000, freeBytes: 210_000_000_000, isInternal: true)]
+        s.smart = ["disk4": .verified, "disk0": .verified]
+        s.topByCPU = [ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000, appPath: "/Applications/Safari.app"),
+                      ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000, appPath: "/Applications/Xcode.app"),
+                      ProcessUsage(pid: 3, name: "WindowServer", cpuPercent: 6, footprintBytes: 400_000_000)]
+        s.topByMemory = [ProcessUsage(pid: 2, name: "Xcode", cpuPercent: 9, footprintBytes: 2_100_000_000, appPath: "/Applications/Xcode.app"),
+                         ProcessUsage(pid: 1, name: "Safari", cpuPercent: 14, footprintBytes: 900_000_000, appPath: "/Applications/Safari.app"),
+                         ProcessUsage(pid: 4, name: "Slack", cpuPercent: 1, footprintBytes: 620_000_000)]
+        s.deviceBatteries = [DeviceBattery(name: "AirPods Pro", parts: [("Left", 86), ("Right", 84), ("Case", 19)]),
+                             DeviceBattery(name: "Keyboard", parts: [("", 62)])]
+        s.sensors = [SensorReading(kind: .temperature, name: "SSD (NAND)", value: 38),
+                     SensorReading(kind: .temperature, name: "Chip die 1", value: 44),
+                     SensorReading(kind: .temperature, name: "Chip die 2", value: 46),
+                     SensorReading(kind: .fan, name: "Fan speed", value: 1800),
+                     SensorReading(kind: .fan, name: "Fan maximum", value: 4900),
+                     SensorReading(kind: .power, name: "System power", value: 9.8),
+                     SensorReading(kind: .power, name: "Processor package power", value: 2.7),
+                     SensorReading(kind: .voltage, name: "VD0R", value: 0.78),
+                     SensorReading(kind: .current, name: "ID0R", value: 0.35)]
         let ssd = DriveRate(bsdName: "disk4", label: "Work SSD", model: "Demo SSD", isInternal: false,
                             readBytesPerSec: 412e6, writeBytesPerSec: 186e6)
         let internalDisk = DriveRate(bsdName: "disk0", label: "Internal SSD", model: "Demo", isInternal: true,

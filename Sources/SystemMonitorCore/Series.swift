@@ -27,3 +27,23 @@ public func zoomed(_ values: [Double], minSpan: Double, floor: Double? = nil, pa
     }
     return values.map { ($0 - bottom) / (top - bottom) }
 }
+
+/// Hover scrubbing: which sample of a history is under the pointer. Samples are drawn right-aligned,
+/// `slots` points wide in total, so a short history only covers the right edge. Nil when the pointer
+/// is left of the first sample or there is no history.
+public func scrubIndex(x: Double, width: Double, count: Int, slots: Int) -> Int? {
+    guard count > 0, slots > 1, width > 0 else { return nil }
+    let step = width / Double(slots - 1)
+    let startX = width - step * Double(count - 1)
+    guard x >= startX - step / 2 else { return nil }
+    return min(count - 1, max(0, Int(((x - startX) / step).rounded())))
+}
+
+/// "now", "12 s ago", "1 min 5 s ago" for a sample that is `samplesAgo` samples old.
+public func agoText(samplesAgo: Int, secondsPerSample: Double) -> String {
+    let seconds = Int((Double(samplesAgo) * secondsPerSample).rounded())
+    if seconds <= 0 { return "now" }
+    if seconds < 60 { return "\(seconds) s ago" }
+    let rest = seconds % 60
+    return rest == 0 ? "\(seconds / 60) min ago" : "\(seconds / 60) min \(rest) s ago"
+}

@@ -12,6 +12,10 @@ struct SettingsView: View {
     let back: () -> Void
 
     @State private var showMore = false
+    @State private var accuracy: [AccuracyLine]?
+    @State private var accuracyFailed = false
+    @State private var calibrationText = ""
+    @State private var calibrationRefused = false
 
     var body: some View {
         Group {
@@ -69,13 +73,33 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
-                Divider()
-                SettingsRow(title: "Core details") {
-                    Toggle("", isOn: $settings.coreDetails).toggleStyle(.checkbox).labelsHidden()
+                if monitor.logitechStatus.hasPrefix("open failed") {
+                    Divider()
+                    HStack {
+                        Text("Mouse blocked: allow Lanes under Input Monitoring.").font(.caption).foregroundStyle(.orange)
+                        Spacer()
+                        Button("Open") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+                        }
+                    }
+                    .padding(.bottom, 8)
                 }
-                Text("A per-core view on the CPU and GPU pages.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, 8)
+                Divider()
+                SettingsRow(title: "Panel") {
+                    Picker("", selection: $settings.panelList) {
+                        Text("Grid").tag(false)
+                        Text("Rows").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                Divider()
+                SettingsRow(title: "Menu bar") {
+                    Picker("", selection: $settings.menuBarIcons) {
+                        Text("Names").tag(false)
+                        Text("Icons").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
             }
 
             SectionHeader("General")
@@ -141,6 +165,8 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             Divider()
+            accuracySection
+            Divider()
             VStack(alignment: .leading, spacing: 8) {
                 definition("App Memory", "Memory used by the apps you run and their helper processes.", .blue)
                 definition("Wired", "Memory the system must keep in RAM (kernel, drivers). It can't be compressed or swapped out.", .orange)
@@ -150,10 +176,77 @@ struct SettingsView: View {
                 definition("Swap used", "Memory moved to the SSD because RAM is full. A lot of swap makes the Mac slower.", nil)
                 definition("Pressure", "How hard macOS works to find free memory. \"Under pressure\" means heavy compressing or swapping.", nil)
                 definition("CPU / GPU temp", "Average of that chip's sensors. Memory temperature only appears on chips that have a memory sensor.", .red)
-                definition("Core details", "A core is one of your processor's workers. This shows how busy each one is, grouped as Efficiency cores (light tasks), Performance and Super cores (heavy tasks), with one temperature per group. Open the CPU tile to see it.", .indigo)
+                definition("Cores", "A core is one of your processor's workers. The CPU page shows how busy each one is, grouped as Efficiency cores (light tasks), Performance and Super cores (heavy tasks), with one temperature per group.", .indigo)
                 definition("GPU sensors", "macOS gives no per-GPU-core numbers, so Renderer and Tiler load are shown, plus the GPU's separate temperature sensors (S1, S2 ...). Sensors are not cores.", .purple)
                 definition("Avg temp", "Average of the CPU, GPU, memory (if available) and SSD temperatures.", .red)
                 definition("Fan", "Current fan speed in revolutions per minute.", nil)
+                definition("Network", "Download (blue) and upload (orange) per connection. Wi-Fi and Ethernet only; VPN and internal links are not counted twice.", .cyan)
+                definition("Drive corner", "Free space on the drive. It turns into a red SMART warning if macOS reports the drive as failing.", nil)
+                definition("Batteries", "Your Mac's battery (laptops) and connected Bluetooth devices that report one. The menu bar shows the lowest level.", .pink)
+                definition("Warm / Throttling", "macOS's own heat level. Throttling means it is slowing the Mac down to cool off.", .orange)
+            }
+        }
+    }
+
+    // MARK: Check accuracy
+
+    /// Compares Lanes' memory numbers with `vm_stat` on this Mac, so a Mac that looks off can be checked.
+    private var accuracySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Accuracy").fontWeight(.semibold)
+                Spacer()
+                Button("Check now") { runAccuracyCheck() }
+            }
+            Text("Compares the memory numbers with macOS's own vm_stat. Activity Monitor uses the same counters.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Text("Activity Monitor says").font(.caption)
+                TextField("GB", text: $calibrationText).frame(width: 56).textFieldStyle(.roundedBorder)
+                Button("Calibrate") { calibrate() }.disabled(Double(calibrationText.replacingOccurrences(of: ",", with: ".")) == nil)
+                if settings.memoryCalibration != 0 { Button("Reset") { settings.memoryCalibration = 0 } }
+            }
+            if settings.memoryCalibration != 0 {
+                Text(String(format: "Memory used is adjusted by %+.2f GB for this Mac.", Double(settings.memoryCalibration) / 1_073_741_824))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if calibrationRefused {
+                Text("That is too far from Lanes' number to be a calibration.").font(.caption).foregroundStyle(.orange)
+            }
+            if let lines = accuracy {
+                ForEach(lines, id: \.name) { line in
+                    HStack {
+                        Image(systemName: line.isOK ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(line.isOK ? .green : .orange)
+                        Text(line.name)
+                        Spacer()
+                        Text(String(format: "%.2f vs %.2f GB  (%.2f%%)", line.lanesGB, line.referenceGB, line.differencePercent))
+                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+            } else if accuracyFailed {
+                Text("Could not run the check.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Makes Lanes' Memory used equal the number typed from Activity Monitor, for this Mac.
+    private func calibrate() {
+        guard let ram = monitor.ram, let gb = Double(calibrationText.replacingOccurrences(of: ",", with: ".")),
+              let offset = ram.calibration(forActivityMonitorGB: gb) else { calibrationRefused = true; return }
+        calibrationRefused = false
+        settings.memoryCalibration = offset
+        calibrationText = ""
+    }
+
+    private func runAccuracyCheck() {
+        guard let ram = monitor.ram?.withCalibration(0) else { accuracyFailed = true; return }
+        accuracyFailed = false
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = AccuracyCheck.run(snapshot: ram)
+            DispatchQueue.main.async {
+                accuracy = result
+                accuracyFailed = result == nil
             }
         }
     }

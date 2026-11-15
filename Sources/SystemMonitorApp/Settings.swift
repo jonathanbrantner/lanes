@@ -3,7 +3,7 @@ import SystemMonitorCore
 
 /// Things that can be shown in the menu bar icon and/or the panel.
 enum MonitorItem: String, CaseIterable, Identifiable {
-    case memory, drives, disk, power, cpu, gpu, thermal
+    case cpu, gpu, memory, disk, network, drives, thermal, power, devices
 
     var id: String { rawValue }
 
@@ -16,6 +16,8 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .cpu: "CPU"
         case .gpu: "GPU"
         case .thermal: "Avg temp & fan"
+        case .network: "Network"
+        case .devices: "Batteries"
         }
     }
 
@@ -28,6 +30,8 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .cpu: "cpu"
         case .gpu: "display"
         case .thermal: "thermometer.medium"
+        case .network: "network"
+        case .devices: "battery.75percent"
         }
     }
 
@@ -41,6 +45,8 @@ enum MonitorItem: String, CaseIterable, Identifiable {
         case .cpu: .systemIndigo
         case .gpu: .systemPurple
         case .thermal: .systemRed
+        case .network: .systemCyan
+        case .devices: .systemGreen
         }
     }
 
@@ -55,7 +61,6 @@ final class Settings: ObservableObject {
     private static let hiddenKey = "hiddenDrives"
     private static let intervalKey = "updateInterval"
     private static let showTempKey = "showTemperatures"
-    private static let coreDetailsKey = "coreDetails"
     private static let unitKey = "temperatureUnit"
     private static let chipKey = "chipOverride"
 
@@ -70,21 +75,34 @@ final class Settings: ObservableObject {
     @Published var showTemperatures: Bool {
         didSet { UserDefaults.standard.set(showTemperatures, forKey: Self.showTempKey) }
     }
-    /// Offer the per-core view in the CPU and GPU boxes.
-    @Published var coreDetails: Bool {
-        didSet { UserDefaults.standard.set(coreDetails, forKey: Self.coreDetailsKey) }
-    }
     /// The item whose full page is open in the panel (nil = the tile overview). Not saved: the panel
     /// always opens on the tiles. Opening the CPU or GPU page is what shows its cores or sensors.
     @Published var openDetail: MonitorItem?
 
-    /// The core views are only worth sampling while their page is open and the switch is on.
-    var cpuCoresVisible: Bool { coreDetails && openDetail == .cpu }
-    var gpuDetailVisible: Bool { coreDetails && openDetail == .gpu }
+    /// The core views are only worth sampling while their page is open is open.
+    var cpuCoresVisible: Bool { openDetail == .cpu }
+    var gpuDetailVisible: Bool { openDetail == .gpu }
+    /// The busiest-apps lists are only read while the CPU or Memory page is open.
+    /// The all-sensors list is only read while its page is open.
+    var sensorsVisible: Bool { openDetail == .thermal || openDetail == .power }
+    var processesVisible: Bool { openDetail == .cpu || openDetail == .memory }
 
     /// Temperature unit. Readings are always collected in °C and converted when shown.
     @Published var useFahrenheit: Bool {
         didSet { UserDefaults.standard.set(useFahrenheit, forKey: Self.unitKey) }
+    }
+    /// Correction to Memory used, in bytes, set from "Calibrate" in Settings (0 = none).
+    @Published var memoryCalibration: Int64 {
+        didSet { UserDefaults.standard.set(Double(memoryCalibration), forKey: "memoryCalibration") }
+    }
+    /// Memory, CPU and GPU as small meters instead of icons or names (the other items use icons).
+    /// Panel as one compact row per item instead of a grid of tiles.
+    @Published var panelList: Bool {
+        didSet { UserDefaults.standard.set(panelList, forKey: "panelList") }
+    }
+    /// Menu bar style: false = short names (MEM, CPU ...), true = coloured icons with shorter text.
+    @Published var menuBarIcons: Bool {
+        didSet { UserDefaults.standard.set(menuBarIcons, forKey: "menuBarIcons") }
     }
     /// nil = detect from this Mac's CPU name.
     @Published var chipOverride: ChipFamily? {
@@ -115,14 +133,23 @@ final class Settings: ObservableObject {
         menuBarItems = Self.load(Self.menuBarKey, default: [.memory, .drives])
         panelItems = Self.load(Self.panelKey, default: Set(MonitorItem.allCases))
         hiddenDrives = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? [])
-        coreDetails = UserDefaults.standard.bool(forKey: Self.coreDetailsKey)
         showTemperatures = UserDefaults.standard.object(forKey: Self.showTempKey) as? Bool ?? true
         useFahrenheit = UserDefaults.standard.bool(forKey: Self.unitKey)
+        menuBarIcons = UserDefaults.standard.bool(forKey: "menuBarIcons")
+        panelList = UserDefaults.standard.bool(forKey: "panelList")
+        memoryCalibration = Int64(UserDefaults.standard.double(forKey: "memoryCalibration"))
         chipOverride = UserDefaults.standard.string(forKey: Self.chipKey).flatMap(ChipFamily.init(rawValue:))
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
         updateInterval = Self.intervals.contains(saved) ? saved : 1
         // The Avg temp & fan item is new: switch it on in the panel once for existing installs,
         // since those two numbers used to sit under Power.
+        // Network and Batteries are new in 2.1: show them in the panel once for existing installs.
+        if !UserDefaults.standard.bool(forKey: "migratedNetworkBatteries") {
+            UserDefaults.standard.set(true, forKey: "migratedNetworkBatteries")
+            if UserDefaults.standard.stringArray(forKey: Self.panelKey) != nil {
+                panelItems.formUnion([.network, .devices])
+            }
+        }
         if !UserDefaults.standard.bool(forKey: "migratedAvgTempItem") {
             UserDefaults.standard.set(true, forKey: "migratedAvgTempItem")
             if UserDefaults.standard.stringArray(forKey: Self.panelKey) != nil {

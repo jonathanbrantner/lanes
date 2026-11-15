@@ -32,6 +32,7 @@ struct PanelView: View {
     @ObservedObject private var settings: Settings
     @StateObject private var loginItem = LoginItem()
     @State private var showSettings = false
+    @State private var showAllSensors = false
     /// The item whose full page is open (opened by clicking its tile); nil = the tile overview.
     /// Kept in Settings so the sampler knows when a core view is on screen.
     private var detail: MonitorItem? {
@@ -63,9 +64,9 @@ struct PanelView: View {
 
     // MARK: Main panel
 
-    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .power, .drives, .disk]
+    private static let tileOrder: [MonitorItem] = [.cpu, .gpu, .memory, .disk, .network, .drives, .thermal, .power, .devices]
     /// Only these have more to show than their tile: cores and sensors, and the memory breakdown.
-    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory]
+    private static let pageItems: Set<MonitorItem> = [.cpu, .gpu, .memory, .network, .power, .thermal, .devices]
 
     private var mainPanel: some View {
         let visible = visibleSections
@@ -75,14 +76,23 @@ struct PanelView: View {
                 Text("Nothing selected. Open Settings to choose what to show.")
                     .foregroundStyle(.secondary)
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                ForEach(tiles, id: \.self) { item in
-                    if let data = tileData(item) {
-                        Tile(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+            if settings.panelList {
+                VStack(spacing: 6) {
+                    ForEach(tiles, id: \.self) { item in
+                        if let data = tileData(item) {
+                            ListRow(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+                        }
+                    }
+                }
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    ForEach(tiles, id: \.self) { item in
+                        if let data = tileData(item) {
+                            Tile(data: data, action: Self.pageItems.contains(item) ? { detail = item } : nil)
+                        }
                     }
                 }
             }
-            if visible.contains(.thermal) { thermalStrip }
             HStack {
                 Button("Settings") { showSettings = true }
                 Spacer()
@@ -101,24 +111,22 @@ struct PanelView: View {
         }
     }
 
-    /// Average temperature and fan speed as one line under the tiles.
-    private var thermalStrip: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "thermometer.medium").foregroundStyle(MonitorItem.thermal.color)
-            if let avg = monitor.thermal?.averageC {
-                Text("Avg \(settings.temperature(avg))").font(.system(size: 12, design: .monospaced))
-            }
-            if let fan = monitor.thermal?.fans.first {
-                Text("·").foregroundStyle(.secondary)
-                Text(String(format: "Fan %.0f RPM", fan.rpm)).font(.system(size: 12, design: .monospaced))
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    // MARK: Tiles
+
+    /// Hover readout for a graph that gets one sample per update tick.
+    private func scrub(_ values: [Double], format: @escaping (Double) -> String) -> ScrubReadout {
+        ScrubReadout(values: values, secondsPerSample: settings.updateInterval, format: format)
     }
 
-    // MARK: Tiles
+    /// Same for a 0...1 load shown as a percentage.
+    private func loadScrub(_ values: [Double]) -> ScrubReadout {
+        scrub(values) { String(format: "%.0f%%", $0 * 100) }
+    }
+
+    /// Temperature sensors are read about every 3 seconds, in whole update intervals (see Sampler).
+    private var sensorSeconds: Double {
+        settings.updateInterval * max(1, (3.0 / settings.updateInterval).rounded(.up))
+    }
 
     private func percent(_ value: Double?) -> String { value.map { String(format: "%.0f%%", $0 * 100) } ?? "n/a" }
 
@@ -134,6 +142,23 @@ struct PanelView: View {
         return zoomed(samples.map { $0.read + $0.write }, minSpan: 1, floor: 0, padding: 0.5)
     }
 
+    /// Free space of the volume that belongs to this drive (matched by volume name; the internal
+    /// disk falls back to the largest internal volume).
+    private func space(for drive: DriveRate) -> VolumeSpace? {
+        let volumes = monitor.volumes
+        if let match = volumes[drive.label] { return match }
+        if let part = drive.label.components(separatedBy: ", ").compactMap({ volumes[$0] }).first { return part }
+        return drive.isInternal ? volumes.values.filter(\.isInternal).max { $0.totalBytes < $1.totalBytes } : nil
+    }
+
+    /// Top right of a drive tile: "SMART ✗" in red if macOS reports the drive failing, else the free space ("412 GB").
+    private func driveCorner(_ drive: DriveRate) -> (text: String?, color: Color) {
+        if monitor.smart[drive.bsdName] == .failing { return ("SMART ✗", .red) }
+        guard let space = space(for: drive) else { return (nil, .secondary) }
+        let gb = Double(space.freeBytes) / 1e9
+        return (gb >= 1000 ? String(format: "%.1f TB", gb / 1000) : String(format: "%.0f GB", gb), .secondary)
+    }
+
     private func tileData(_ item: MonitorItem) -> TileData? {
         switch item {
         case .cpu:
@@ -144,7 +169,7 @@ struct PanelView: View {
         case .gpu:
             return TileData(id: item, symbol: item.symbol, name: item.title, color: item.color,
                             big: percent(monitor.gpu),
-                            small: monitor.gpuDetail.map { "Renderer \(percent($0.renderer))" } ?? "Graphics",
+                            small: monitor.gpuCoreCount.map { "\($0) cores" } ?? "Graphics",
                             corner: shownTemp(monitor.thermal?.gpuC),
                             history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05))
         case .memory:
@@ -171,7 +196,8 @@ struct PanelView: View {
                             name: drives.count == 1 ? first.label : "\(drives.count) drives", color: item.color,
                             big: Monitor.speed(monitor.externalRead + monitor.externalWrite),
                             small: "", rates: rates(monitor.externalRead, monitor.externalWrite),
-                            corner: nil, history: driveHistory(first))
+                            corner: driveCorner(first).text, cornerColor: driveCorner(first).color,
+                            history: driveHistory(first))
         case .disk:
             guard let drive = monitor.internalDrive else {
                 return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
@@ -180,9 +206,38 @@ struct PanelView: View {
             return TileData(id: item, symbol: item.symbol, name: "Disk", color: item.color,
                             big: Monitor.speed(drive.readMBps + drive.writeMBps),
                             small: "", rates: rates(drive.readMBps, drive.writeMBps),
-                            corner: shownTemp(monitor.thermal?.ssdC), history: driveHistory(drive))
+                            corner: shownTemp(monitor.thermal?.ssdC) ?? driveCorner(drive).text,
+                            cornerColor: shownTemp(monitor.thermal?.ssdC) == nil ? driveCorner(drive).color : .red,
+                            history: driveHistory(drive))
+        case .network:
+            guard !monitor.network.isEmpty else {
+                return TileData(id: item, symbol: item.symbol, name: "Network", color: item.color,
+                                big: "-", small: "No connection", corner: nil, history: [])
+            }
+            let combined = networkCombinedHistory()
+            return TileData(id: item, symbol: item.symbol, name: "Network", color: item.color,
+                            big: Monitor.speed(monitor.networkDown + monitor.networkUp),
+                            small: "", rates: rates(monitor.networkDown, monitor.networkUp),
+                            corner: nil, history: zoomed(combined, minSpan: 1, floor: 0, padding: 0.5))
         case .thermal:
-            return nil
+            guard let avg = monitor.thermal?.averageC else { return nil }
+            let fan = monitor.thermal?.fans.first.map { String(format: "Fan %.0f RPM", $0.rpm) }
+            var data = TileData(id: item, symbol: item.symbol, name: "Avg temp", color: item.color,
+                                big: settings.temperature(avg), small: pressureText(monitor.thermalPressure) ?? fan ?? "All sensors",
+                                corner: nil, history: zoomed(monitor.avgTempHistory, minSpan: 4, padding: 1))
+            data.fraction = min(1, avg / 100)
+            return data
+        case .devices:
+            guard let lowest = monitor.lowestBattery else { return nil }
+            let names = (monitor.laptopBattery == nil ? [] : ["This Mac"]) + monitor.deviceBatteries.map(\.name)
+            var data = TileData(id: item, symbol: item.symbol, name: "Batteries", color: item.color,
+                                big: "\(lowest)%", small: "\(names.count) device\(names.count == 1 ? "" : "s")",
+                                corner: nil, history: [])
+            // Every device on its own line (the lowest level is the big number).
+            data.lines = (monitor.laptopBattery.map { [("This Mac", "\($0.percent)%")] } ?? [])
+                + monitor.deviceBatteries.map { (shortDeviceName($0.name), "\($0.lowestPercent)%") }
+            data.fraction = Double(lowest) / 100
+            return data
         }
     }
 
@@ -192,6 +247,8 @@ struct PanelView: View {
             switch item {
             case .gpu: return monitor.gpu != nil
             case .power: return monitor.power != nil
+            case .network: return true
+            case .devices: return !monitor.deviceBatteries.isEmpty || monitor.laptopBattery != nil
             case .thermal: return monitor.thermal?.averageC != nil || !(monitor.thermal?.fans.isEmpty ?? true)
             default: return true
             }
@@ -202,15 +259,301 @@ struct PanelView: View {
     private func section(for item: MonitorItem) -> some View {
         switch item {
         case .memory: memorySection
+        case .network: networkSection
+        case .power: powerSection
+        case .thermal: sensorsSection
+        case .devices: devicesSection
         case .cpu: percentSection(.cpu, value: monitor.cpu,
                                   history: zoomed(monitor.cpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
+                                  scrub: loadScrub(monitor.cpuHistory),
                                   temp: shownTemp(monitor.thermal?.cpuC),
-                                  detail: { if settings.coreDetails { cpuCoresView } })
+                                  detail: { VStack(alignment: .leading, spacing: 8) { cpuCoresView; busiestApps(byMemory: false) } })
         case .gpu: percentSection(.gpu, value: monitor.gpu,
                                   history: zoomed(monitor.gpuHistory, minSpan: 0.07, floor: 0, padding: 0.05),
+                                  scrub: loadScrub(monitor.gpuHistory),
                                   temp: shownTemp(monitor.thermal?.gpuC),
-                                  detail: { if settings.coreDetails { gpuDetailView } })
+                                  detail: { gpuDetailView })
         default: EmptyView()
+        }
+    }
+
+    // MARK: Batteries page
+
+    /// Expanded view: one card per device with a bar for every part (left, right, case).
+    private var devicesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header(.devices)
+            if let battery = monitor.laptopBattery {
+                batteryCard("This Mac", symbol: "laptopcomputer",
+                            parts: [("Battery", battery.percent)],
+                            detail: [battery.isCharging ? "Charging" : (battery.onPower ? "On power, not charging" : "On battery"),
+                                     "\(battery.cycles) charge cycles"])
+            }
+            ForEach(monitor.deviceBatteries, id: \.name) { device in
+                batteryCard(device.name, symbol: deviceSymbol(device.name),
+                            parts: device.parts.map { ($0.label.isEmpty ? "Battery" : $0.label, $0.percent) }, detail: [])
+            }
+            if monitor.deviceBatteries.isEmpty && monitor.laptopBattery == nil {
+                Text("No device with a battery is connected.").foregroundStyle(.secondary)
+            }
+            Text("Updated about once a minute.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func deviceSymbol(_ name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("airpods") { return "airpodspro" }
+        if lower.contains("keyboard") || lower.contains("keys") { return "keyboard" }
+        if lower.contains("mouse") || lower.contains("mx ") { return "computermouse" }
+        if lower.contains("trackpad") { return "rectangle.and.hand.point.up.left" }
+        return "dot.radiowaves.left.and.right"
+    }
+
+    private func batteryCard(_ name: String, symbol: String, parts: [(String, Int)], detail: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol).foregroundStyle(MonitorItem.devices.color)
+                Text(name).fontWeight(.semibold).lineLimit(1)
+                Spacer()
+            }
+            ForEach(parts.indices, id: \.self) { i in
+                let part = parts[i]
+                HStack(spacing: 8) {
+                    Text(part.0).font(.caption).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 4).fill(part.1 <= 20 ? Color.red : Color.green)
+                                .frame(width: max(4, geo.size.width * CGFloat(part.1) / 100))
+                        }
+                    }
+                    .frame(height: 10)
+                    Text("\(part.1)%").font(.caption).monospacedDigit()
+                        .foregroundStyle(part.1 <= 20 ? Color.red : Color.primary)
+                        .frame(width: 38, alignment: .trailing)
+                }
+            }
+            ForEach(detail, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    // MARK: Sensors
+
+    /// Every temperature, fan, power, voltage and current reading, grouped.
+    private var sensorsSection: some View {
+        let readings = monitor.sensors
+        let thermal = monitor.thermal
+        // The few numbers that matter, then the long list only on request.
+        var key: [(String, String, Color)] = []
+        func temp(_ name: String, _ c: Double?) { if let c { key.append((name, settings.temperature(c), .red)) } }
+        temp("CPU", thermal?.cpuC)
+        temp("GPU", thermal?.gpuC)
+        temp("Memory", thermal?.ramC)
+        temp("SSD", thermal?.ssdC)
+        if let dies = SensorsCollector.summary(readings, kind: .temperature, namePrefix: "die") {
+            key.append(("Chip, \(dies.count) sensors", "avg \(settings.temperature(dies.average, symbol: false))  max \(settings.temperature(dies.maximum, symbol: false))", .red))
+        }
+        for fan in readings.filter({ $0.kind == .fan && $0.name == "Fan speed" }) { key.append((fan.name, sensorText(fan), .primary)) }
+        return VStack(alignment: .leading, spacing: 8) {
+            header(.thermal)
+            if readings.isEmpty { Text("Waiting for data").foregroundStyle(.secondary) }
+            VStack(spacing: 4) {
+                ForEach(key.indices, id: \.self) { i in
+                    HStack {
+                        Text(key[i].0).foregroundStyle(.secondary)
+                        Spacer(minLength: 6)
+                        Text(key[i].1).monospacedDigit().foregroundStyle(key[i].2)
+                    }
+                    .font(.system(size: 12))
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            Button { showAllSensors.toggle() } label: {
+                HStack {
+                    Text(showAllSensors ? "Hide all readings" : "Show all \(readings.count) readings")
+                    Spacer()
+                    Image(systemName: showAllSensors ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            if showAllSensors {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(readings.indices, id: \.self) { i in
+                            HStack {
+                                Text(readings[i].name).lineLimit(1)
+                                Spacer(minLength: 6)
+                                Text(sensorText(readings[i])).monospacedDigit()
+                                    .foregroundStyle(readings[i].kind == .temperature ? Color.red : Color.primary)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                    .padding(10)
+                }
+                .frame(maxHeight: 260)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private func sensorText(_ r: SensorReading) -> String {
+        switch r.kind {
+        case .temperature: settings.temperature(r.value)
+        case .fan: String(format: "%.0f rpm", r.value)
+        case .power: String(format: "%.2f W", r.value)
+        case .voltage: String(format: "%.2f V", r.value)
+        case .current: String(format: "%.2f A", r.value)
+        }
+    }
+
+    // MARK: Busiest apps
+
+    /// The five busiest apps by CPU or by memory, on the CPU and Memory pages. Helper processes are added
+    /// to their app, each row has the app's icon and a thin bar relative to the top one.
+    private func busiestApps(byMemory: Bool) -> some View {
+        let list = byMemory ? monitor.topByMemory : monitor.topByCPU
+        // CPU as a share of the whole chip (like the CPU number at the top), so it never passes 100%.
+        let cores = Double(max(ProcessInfo.processInfo.activeProcessorCount, 1))
+        let top = max(list.map { byMemory ? Double($0.footprintBytes) : $0.cpuPercent / cores }.max() ?? 1, 1)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(byMemory ? "MOST MEMORY" : "BUSIEST APPS")
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).tracking(0.5)
+            if list.isEmpty { Text("Waiting for data").font(.caption).foregroundStyle(.secondary) }
+            ForEach(list, id: \.name) { p in
+                let value = byMemory ? Double(p.footprintBytes) : p.cpuPercent / cores
+                HStack(spacing: 8) {
+                    appIcon(p.appPath).frame(width: 16, height: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(p.name).lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 6)
+                            Text(byMemory ? bytes(p.footprintBytes) : String(format: "%.0f%%", p.cpuPercent / cores))
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .font(.system(size: 11))
+                        GeometryReader { geo in
+                            RoundedRectangle(cornerRadius: 1.5).fill((byMemory ? MonitorItem.memory : MonitorItem.cpu).color.opacity(0.7))
+                                .frame(width: max(2, geo.size.width * CGFloat(value / top)), height: 3)
+                        }
+                        .frame(height: 3)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The app's own icon, or a terminal symbol for command line tools.
+    @ViewBuilder
+    private func appIcon(_ path: String?) -> some View {
+        if let path {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path)).resizable()
+        } else {
+            Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Power
+
+    /// Power page: the system's draw over time, then a table of where it goes.
+    private var powerSection: some View {
+        let system = monitor.power?.systemWatts
+        let package = monitor.sensors.first { $0.kind == .power && $0.name == "Processor package power" }?.value
+        let gpu = monitor.power?.gpuWatts
+        let ports = monitor.power?.portsWatts
+        // Rows: (name, value text, note). The processor package includes the GPU, so CPU = package - GPU.
+        var rows: [(String, String, String)] = []
+        if let system { rows.append(("System", String(format: "%.1f W", system), "total from the wall")) }
+        if let package {
+            rows.append(("CPU", String(format: "%.1f W", max(0, package - (gpu ?? 0))), "estimate"))
+        }
+        if let gpu { rows.append(("GPU", String(format: "%.2f W", gpu), "")) }
+        if let ports { rows.append(("Ports", String(format: "%.2f W", ports), "controllers only")) }
+        if let fan = monitor.thermal?.fans.first { rows.append(("Fan", String(format: "%.0f rpm", fan.rpm), "no power reading")) }
+        if let system, let package {
+            rows.append(("Everything else", String(format: "%.1f W", max(0, system - package - (ports ?? 0))), "memory, SSD, devices"))
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                header(.power)
+                Spacer()
+                Text(system.map { String(format: "%.1f W", $0) } ?? "n/a").font(.headline).monospacedDigit()
+            }
+            HistoryChart(values: zoomed(monitor.powerHistory, minSpan: 2, floor: 0, padding: 0.5), color: MonitorItem.power.color,
+                         scrub: scrub(monitor.powerHistory) { String(format: "%.1f W", $0) }).frame(height: 40)
+            VStack(spacing: 5) {
+                ForEach(rows.indices, id: \.self) { i in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(rows[i].0).font(.system(size: 12, weight: i == 0 ? .semibold : .regular))
+                        Spacer(minLength: 6)
+                        Text(rows[i].1).font(.system(size: 12)).monospacedDigit().frame(width: 62, alignment: .trailing)
+                    }
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            Text("macOS does not report what a device on a port draws, so that sits in the last row.")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Network
+
+    /// Download plus upload of every connection, one value per sample.
+    private func networkCombinedHistory() -> [Double] {
+        let series = monitor.networkHistory.values
+        let length = series.map(\.count).max() ?? 0
+        return (0..<length).map { i in
+            series.reduce(0) { sum, h in
+                let offset = length - h.count
+                return i >= offset ? sum + h[i - offset].read + h[i - offset].write : sum
+            }
+        }
+    }
+
+    private var networkSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header(.network)
+            if monitor.network.isEmpty {
+                Text("No active connection").foregroundStyle(.secondary)
+            }
+            ForEach(monitor.activeNetwork, id: \.bsdName) { connection in
+                let samples = monitor.networkHistory[connection.bsdName] ?? []
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(connection.label).fontWeight(.semibold)
+                        Spacer()
+                        let r = rates(connection.downMBps, connection.upMBps)
+                        Text("↓").foregroundStyle(Color(nsColor: .systemBlue)); Text("\(r.read) MB/s").monospacedDigit()
+                        Text("↑").foregroundStyle(Color(nsColor: .systemOrange)); Text("\(r.write) MB/s").monospacedDigit()
+                    }
+                    .font(.caption)
+                    HistoryChart(values: zoomed(samples.map(\.read), minSpan: 1, floor: 0, padding: 0.3),
+                                 color: Color(nsColor: .systemBlue),
+                                 scrub: scrub(samples.map(\.read)) { Monitor.speed($0) }).frame(height: 28)
+                    HistoryChart(values: zoomed(samples.map(\.write), minSpan: 1, floor: 0, padding: 0.3),
+                                 color: Color(nsColor: .systemOrange),
+                                 scrub: scrub(samples.map(\.write)) { Monitor.speed($0) }).frame(height: 28)
+                }
+                .padding(8)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
+            let hidden = monitor.network.count - monitor.activeNetwork.count
+            if hidden > 0 {
+                Text("\(hidden) idle connection\(hidden == 1 ? "" : "s") hidden").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -229,9 +572,20 @@ struct PanelView: View {
             if let ram = monitor.ram {
                 Text("\(bytes(ram.usedBytes)) of \(bytes(ram.totalBytes)) used")
                 HistoryChart(values: zoomed(monitor.ramHistory, minSpan: 0.03, floor: 0, padding: 0.01),
-                             color: pressureColor(ram.pressure))
+                             color: pressureColor(ram.pressure),
+                             scrub: scrub(monitor.ramHistory.map { $0 * Double(ram.totalBytes) }) { bytes(UInt64(max(0, $0))) })
                     .frame(height: 40)
                 MemoryBar(ram: ram).frame(height: 8)
+                // How much memory macOS has squeezed, over the last minute: rising means pressure is building.
+                HStack {
+                    Text("Compressed over time").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(bytes(ram.compressedBytes)).font(.caption).monospacedDigit()
+                }
+                HistoryChart(values: zoomed(monitor.compressedHistory, minSpan: 100_000_000, floor: 0, padding: 20_000_000),
+                             color: .purple,
+                             scrub: scrub(monitor.compressedHistory) { bytes(UInt64(max(0, $0))) })
+                    .frame(height: 24)
                 VStack(spacing: 3) {
                     legend("App Memory", ram.appBytes, .blue)
                     legend("Wired", ram.wiredBytes, .orange)
@@ -239,6 +593,7 @@ struct PanelView: View {
                     if ram.otherBytes > 0 { legend("Other", ram.otherBytes, .gray) }
                 }
                 .font(.caption)
+                busiestApps(byMemory: true)
                 HStack {
                     Text("Cached files \(bytes(ram.cachedBytes))")
                     Spacer()
@@ -264,7 +619,8 @@ struct PanelView: View {
     // MARK: CPU / GPU
 
     private func percentSection<Detail: View>(_ item: MonitorItem, value: Double?, history: [Double],
-                                              temp: String?, @ViewBuilder detail: () -> Detail) -> some View {
+                                              scrub: ScrubReadout?, temp: String?,
+                                              @ViewBuilder detail: () -> Detail) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 header(item)
@@ -272,7 +628,7 @@ struct PanelView: View {
                 if let temp { Text(temp).monospacedDigit().foregroundStyle(.red) }
                 Text(value.map { String(format: "%.0f%%", $0 * 100) } ?? "-").monospacedDigit()
             }
-            HistoryChart(values: history, color: item.color).frame(height: 36)
+            HistoryChart(values: history, color: item.color, scrub: scrub).frame(height: 36)
             detail()
         }
     }
@@ -317,7 +673,8 @@ struct PanelView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: columns), spacing: 5) {
                 ForEach(Array(cluster.cpus.enumerated()), id: \.element) { index, cpu in
                     MiniBox(title: "\(cpu)", value: loads[index].map { percent($0) } ?? "-",
-                            history: zoomed(histories[index], minSpan: 0.07, floor: 0, padding: 0.05), color: color)
+                            history: zoomed(histories[index], minSpan: 0.07, floor: 0, padding: 0.05), color: color,
+                            scrub: loadScrub(histories[index]))
                 }
             }
         }
@@ -332,7 +689,8 @@ struct PanelView: View {
         let color = MonitorItem.gpu.color
         func box(_ title: String, _ value: Double?, _ history: [Double]) -> some View {
             MiniBox(title: title, value: value.map { percent($0) } ?? "-",
-                    history: zoomed(history, minSpan: 0.07, floor: 0, padding: 0.05), color: color)
+                    history: zoomed(history, minSpan: 0.07, floor: 0, padding: 0.05), color: color,
+                    scrub: loadScrub(history))
         }
         return VStack(alignment: .leading, spacing: 8) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
@@ -342,10 +700,12 @@ struct PanelView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 2), spacing: 5) {
                 MiniBox(title: "Power", value: monitor.power?.gpuWatts.map { String(format: "%.2f W", $0) } ?? "-",
-                        history: zoomed(monitor.gpuPowerHistory, minSpan: 0.5, floor: 0, padding: 0.1), color: .yellow)
+                        history: zoomed(monitor.gpuPowerHistory, minSpan: 0.5, floor: 0, padding: 0.1), color: .yellow,
+                        scrub: scrub(monitor.gpuPowerHistory) { String(format: "%.2f W", $0) })
                 MiniBox(title: "Memory", value: d?.memoryBytes.map { bytes(UInt64($0)) } ?? "-",
                         history: zoomed(monitor.gpuMemoryHistory, minSpan: 50_000_000, floor: 0, padding: 10_000_000),
-                        color: .green)
+                        color: .green,
+                        scrub: scrub(monitor.gpuMemoryHistory) { bytes(UInt64(max(0, $0))) })
             }
             if settings.showTemperatures, let sensors = monitor.thermal?.gpuSensorsC, !sensors.isEmpty {
                 HStack {
@@ -359,7 +719,11 @@ struct PanelView: View {
                         MiniBox(title: "S\(i + 1)", value: settings.temperature(sensors[i], symbol: false),
                                 history: zoomed(i < monitor.gpuSensorHistory.count ? monitor.gpuSensorHistory[i] : [],
                                                 minSpan: 4, padding: 1),
-                                color: .red)
+                                color: .red,
+                                scrub: i < monitor.gpuSensorHistory.count
+                                    ? ScrubReadout(values: monitor.gpuSensorHistory[i], secondsPerSample: sensorSeconds,
+                                                   format: { settings.temperature($0, symbol: false) })
+                                    : nil)
                     }
                 }
             }
@@ -387,6 +751,23 @@ struct PanelView: View {
         ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .memory)
     }
 
+    /// "Jonathan's AirPods Pro" -> "AirPods Pro": drop the owner's name so the card stays short.
+    private func shortDeviceName(_ name: String) -> String {
+        if let range = name.range(of: "’s ") ?? name.range(of: "'s ") { return String(name[range.upperBound...]) }
+        return name
+    }
+
+    /// macOS's own thermal state; nothing is shown while it is "nominal".
+    private func pressureText(_ state: ProcessInfo.ThermalState) -> String? {
+        switch state {
+        case .nominal: nil
+        case .fair: "Warm"
+        case .serious: "Throttling"
+        case .critical: "Throttling hard"
+        @unknown default: nil
+        }
+    }
+
     private func pressureLabel(_ p: MemoryPressure) -> String {
         switch p {
         case .normal: "Normal"
@@ -406,10 +787,22 @@ struct PanelView: View {
 
 // MARK: - Charts
 
+/// What the hover readout of a graph shows: the real value of every sample (the graph itself is
+/// zoomed to its own range), how many seconds apart the samples are, and how to print a value.
+struct ScrubReadout {
+    let values: [Double]
+    let secondsPerSample: Double
+    let format: (Double) -> String
+}
+
 /// Filled history chart for a 0...1 value over the last 60 seconds.
 struct HistoryChart: View {
     let values: [Double]
     let color: Color
+    /// Real values behind `values`, for the hover readout. Nil (tiles) means no scrubbing.
+    var scrub: ScrubReadout?
+
+    @State private var hover: Int?
 
     var body: some View {
         GeometryReader { geo in
@@ -429,10 +822,42 @@ struct HistoryChart: View {
                     points.dropFirst().forEach { p.addLine(to: $0) }
                 }
                 .stroke(color, lineWidth: 1.5)
+                if let scrub, let i = hover, i < scrub.values.count, i < points.count {
+                    scrubMarker(scrub, index: i, at: points[i], size: geo.size)
+                }
             }
             .background(Color.primary.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                guard let scrub else { return }
+                switch phase {
+                case .active(let location):
+                    hover = scrubIndex(x: location.x, width: geo.size.width, count: scrub.values.count,
+                                       slots: Monitor.historyLength)
+                case .ended:
+                    hover = nil
+                }
+            }
         }
+    }
+
+    /// A vertical line at the sample under the pointer, a dot on the graph and the real value.
+    private func scrubMarker(_ scrub: ScrubReadout, index: Int, at point: CGPoint, size: CGSize) -> some View {
+        let ago = scrub.values.count - 1 - index
+        let text = "\(scrub.format(scrub.values[index])) · \(agoText(samplesAgo: ago, secondsPerSample: scrub.secondsPerSample))"
+        return ZStack(alignment: point.x > size.width / 2 ? .topLeading : .topTrailing) {
+            Rectangle().fill(Color.primary.opacity(0.55)).frame(width: 1, height: size.height)
+                .position(x: point.x, y: size.height / 2)
+            Circle().fill(color).overlay(Circle().stroke(Color.primary.opacity(0.8), lineWidth: 1))
+                .frame(width: 5, height: 5).position(point)
+            Text(text).font(.system(size: 9, weight: .medium, design: .monospaced))
+                .padding(.horizontal, 3).padding(.vertical, 1)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 3))
+                .padding(2)
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
     }
 
     private func chartPoints(in size: CGSize) -> [CGPoint] {

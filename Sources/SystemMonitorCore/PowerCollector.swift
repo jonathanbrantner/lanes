@@ -6,10 +6,14 @@ public struct PowerSnapshot: Equatable {
     public let systemWatts: Double?
     /// GPU power in watts (IOReport energy counters). nil if not exposed.
     public let gpuWatts: Double?
+    /// Energy used by the PCIe / Thunderbolt port controllers (IOReport). This is the controller, not
+    /// what a device plugged into a port draws, which macOS does not report. nil if not exposed.
+    public let portsWatts: Double?
 
-    public init(systemWatts: Double?, gpuWatts: Double?) {
+    public init(systemWatts: Double?, gpuWatts: Double?, portsWatts: Double? = nil) {
         self.systemWatts = systemWatts
         self.gpuWatts = gpuWatts
+        self.portsWatts = portsWatts
     }
 }
 
@@ -42,6 +46,8 @@ public final class PowerCollector {
         }
 
         var gpu: Double?
+        var portsFromPorts: Double?
+        var portsFromControllers: Double?
         if ioReportOK {
             let count = Int(lanes_power_read(&channels, Int32(channels.count)))
             for i in 0..<max(count, 0) {
@@ -49,10 +55,15 @@ public final class PowerCollector {
                     $0.withMemoryRebound(to: CChar.self, capacity: 64) { String(cString: $0) }
                 }
                 if name == "GPU Energy" { gpu = channels[i].watts }
+                // "PCIe Port 0 Energy" and the controllers behind them ("apciec0 Energy"): use the ports,
+                // and only fall back to the controllers so nothing is counted twice.
+                if name.hasPrefix("PCIe Port") { portsFromPorts = (portsFromPorts ?? 0) + channels[i].watts }
+                if name.hasPrefix("apciec") { portsFromControllers = (portsFromControllers ?? 0) + channels[i].watts }
             }
         }
 
+        let ports = portsFromPorts ?? portsFromControllers
         if system == nil && gpu == nil { return nil }
-        return PowerSnapshot(systemWatts: system, gpuWatts: gpu)
+        return PowerSnapshot(systemWatts: system, gpuWatts: gpu, portsWatts: ports)
     }
 }

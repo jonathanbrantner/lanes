@@ -217,4 +217,210 @@ final class CollectorTests: XCTestCase {
         XCTAssertTrue(z.min()! > 0.05, "min \(z.min()!)")           // nor to the bottom
         XCTAssertEqual(z.max()!, (0.4 - 0.07) / 0.36, accuracy: 0.001)   // 0.917: 8% below the top
     }
+
+    func testScrubIndexMapsPointerToRightAlignedSamples() {
+        // 60 slots over 590 pt: 10 pt per step. Three samples cover only the right edge.
+        XCTAssertEqual(scrubIndex(x: 590, width: 590, count: 3, slots: 60), 2)
+        XCTAssertEqual(scrubIndex(x: 570, width: 590, count: 3, slots: 60), 0)
+        XCTAssertNil(scrubIndex(x: 100, width: 590, count: 3, slots: 60))
+        XCTAssertEqual(scrubIndex(x: 0, width: 590, count: 60, slots: 60), 0)
+        XCTAssertNil(scrubIndex(x: 10, width: 590, count: 0, slots: 60))
+    }
+
+    func testAgoText() {
+        XCTAssertEqual(agoText(samplesAgo: 0, secondsPerSample: 5), "now")
+        XCTAssertEqual(agoText(samplesAgo: 9, secondsPerSample: 5), "45 s ago")
+        XCTAssertEqual(agoText(samplesAgo: 13, secondsPerSample: 5), "1 min 5 s ago")
+        XCTAssertEqual(agoText(samplesAgo: 12, secondsPerSample: 5), "1 min ago")
+    }
+
+    func testGPUCoreCountIsNilOrPositive() {
+        if let n = GPUCollector().coreCount { XCTAssertGreaterThan(n, 0) }
+    }
+
+    func testAccuracyReferenceParsesVMStat() {
+        let text = """
+        Mach Virtual Memory Statistics: (page size of 16384 bytes)
+        Pages free:                                    42171.
+        Pages purgeable:                               45017.
+        Pages wired down:                             160046.
+        File-backed pages:                            556237.
+        Anonymous pages:                              708063.
+        Pages occupied by compressor:                  68833.
+        """
+        let total = 25_769_803_776.0
+        let ref = AccuracyCheck.reference(vmStat: text, totalBytes: total)
+        XCTAssertNotNil(ref)
+        let gb = 1_073_741_824.0
+        XCTAssertEqual(ref!.wired, 160046 * 16384 / gb, accuracy: 0.0001)
+        XCTAssertEqual(ref!.used, (total - 42171 * 16384 - 556237 * 16384) / gb, accuracy: 0.0001)
+        XCTAssertNil(AccuracyCheck.reference(vmStat: "garbage", totalBytes: total))
+    }
+
+    func testNetworkDeltaHandlesCounterWrap() {
+        XCTAssertEqual(NetworkCollector.delta(old: 100, new: 400), 300)
+        XCTAssertEqual(NetworkCollector.delta(old: UInt32.max - 9, new: 5), 15)
+    }
+
+    func testNetworkOnlyCountsPhysicalInterfaces() {
+        XCTAssertTrue(NetworkCollector.isPhysical("en0"))
+        XCTAssertTrue(NetworkCollector.isPhysical("en12"))
+        for name in ["lo0", "utun3", "awdl0", "bridge0", "llw0", "en0x", "en"] {
+            XCTAssertFalse(NetworkCollector.isPhysical(name), name)
+        }
+    }
+
+    func testSmartStatusParsing() {
+        func plist(_ status: String) -> Data {
+            "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>SMARTStatus</key><string>\(status)</string></dict></plist>".data(using: .utf8)!
+        }
+        XCTAssertEqual(DiskSpaceCollector.parseSmart(plist: plist("Verified")), .verified)
+        XCTAssertEqual(DiskSpaceCollector.parseSmart(plist: plist("Failing")), .failing)
+        XCTAssertNil(DiskSpaceCollector.parseSmart(plist: plist("Not Supported")))
+        XCTAssertNil(DiskSpaceCollector.parseSmart(plist: Data()))
+    }
+
+    func testVolumeSpaceText() {
+        let v = VolumeSpace(name: "X", totalBytes: 1_000_000_000_000, freeBytes: 412_000_000_000, isInternal: true)
+        XCTAssertEqual(v.usedFraction, 0.588, accuracy: 0.001)
+        XCTAssertTrue(v.freeText.hasSuffix("free"))
+        XCTAssertFalse(DiskSpaceCollector().volumes().isEmpty)
+    }
+
+    func testProcessCPUPercent() {
+        XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 0, newNs: 500_000_000, seconds: 1), 50, accuracy: 0.001)
+        XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 0, newNs: 2_000_000_000, seconds: 1), 200, accuracy: 0.001)
+        XCTAssertEqual(ProcessCollector.cpuPercent(oldNs: 10, newNs: 5, seconds: 1), 0)
+    }
+
+    func testProcessSweepFindsProcesses() {
+        let collector = ProcessCollector()
+        _ = collector.sample()
+        let sweep = collector.sample()
+        // Helpers are combined per app (the test runner itself is part of "Xcode"), so look at the whole sweep.
+        XCTAssertFalse(sweep.isEmpty)
+        XCTAssertTrue(sweep.contains { $0.footprintBytes > 0 && !$0.name.isEmpty })
+    }
+
+    func testSensorKindsAndNames() {
+        XCTAssertEqual(SensorsCollector.kind(forKey: "Tp0g"), .temperature)
+        XCTAssertEqual(SensorsCollector.kind(forKey: "PSTR"), .power)
+        XCTAssertEqual(SensorsCollector.kind(forKey: "F0Ac"), .fan)
+        XCTAssertNil(SensorsCollector.kind(forKey: "FNum"))
+        XCTAssertNil(SensorsCollector.kind(forKey: "MSLD"))
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "NAND CH0"), "SSD (NAND)")
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "PMU tdie4"), "Chip die 4")
+        XCTAssertEqual(SensorsCollector.friendlyName(forHID: "PMU2 tdev3"), "Chip 2 device 3")
+        XCTAssertTrue(SensorsCollector.isPlausible(40, kind: .temperature))
+        XCTAssertFalse(SensorsCollector.isPlausible(400, kind: .temperature))
+        XCTAssertFalse(SensorsCollector.isPlausible(.nan, kind: .power))
+    }
+
+    func testSensorsReadFindsReadings() {
+        // A virtual machine (the CI runner) has no sensors, so an empty list is fine there. When there are
+        // readings, they must be plausible numbers.
+        let readings = SensorsCollector().read()
+        for r in readings { XCTAssertTrue(SensorsCollector.isPlausible(r.value, kind: r.kind), r.name) }
+    }
+
+    func testBluetoothBatteryParsing() {
+        let json = """
+        {"SPBluetoothDataType":[{"device_connected":[
+          {"AirPods":{"device_batteryLevelCase":"19%","device_batteryLevelLeft":"86%","device_batteryLevelRight":"80%"}},
+          {"Keyboard":{}},
+          {"Mouse":{"device_batteryLevelMain":"54%"}}]}]}
+        """.data(using: .utf8)!
+        let devices = DeviceBatteries.parseBluetooth(json: json)
+        XCTAssertEqual(devices.map(\.name), ["AirPods", "Mouse"])
+        XCTAssertEqual(devices[0].lowestPercent, 80)   // the case (19%) does not count
+        XCTAssertEqual(devices[1].parts.first?.percent, 54)
+        XCTAssertTrue(DeviceBatteries.parseBluetooth(json: Data()).isEmpty)
+        XCTAssertEqual(DeviceBatteries.percent("86%"), 86)
+    }
+
+    func testLaptopBatteryIsNilOrSane() {
+        if let b = DeviceBatteries.laptop() { XCTAssertTrue((0...100).contains(b.percent)) }
+    }
+
+    func testMemoryCalibration() {
+        let gb = UInt64(1_073_741_824)
+        let snap = RAMSnapshot(appBytes: 8 * gb, wiredBytes: 2 * gb, compressedBytes: gb, cachedBytes: 5 * gb,
+                               totalBytes: 24 * gb, swapUsedBytes: 0, pressure: .normal,
+                               freeBytes: 6 * gb, fileBackedBytes: 5 * gb)
+        XCTAssertEqual(snap.usedBytes, 13 * gb)
+        let offset = snap.calibration(forActivityMonitorGB: 12.5)
+        XCTAssertEqual(offset, -Int64(gb) / 2)
+        XCTAssertEqual(snap.withCalibration(offset!).usedBytes, 12 * gb + gb / 2)
+        XCTAssertEqual(snap.withCalibration(offset!).withCalibration(0).usedBytes, 13 * gb)
+        XCTAssertNil(snap.calibration(forActivityMonitorGB: 40))   // not a calibration, a typo
+        XCTAssertNil(snap.calibration(forActivityMonitorGB: 0))
+    }
+
+    func testLogitechNameShortening() {
+        XCTAssertEqual(LogitechReceiver.shortName("G502 LIGHTSPEED Wireless Gaming Mouse"), "G502 LIGHTSPEED Mouse")
+        XCTAssertEqual(LogitechReceiver.shortName("MX Keys Mini"), "MX Keys Mini")
+        XCTAssertEqual(LogitechReceiver.shortName("Wireless"), "Wireless")
+    }
+
+    func testProcessDisplayNames() {
+        let safari = ProcessCollector.displayName(path: "/Applications/Safari.app/Contents/MacOS/Safari", rawName: "Safari")
+        XCTAssertEqual(safari.name, "Safari")
+        XCTAssertEqual(safari.appPath, "/Applications/Safari.app")
+        let helper = ProcessCollector.displayName(
+            path: "/Applications/Google Chrome.app/Contents/Frameworks/X.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)",
+            rawName: "Google Chrome H")
+        XCTAssertEqual(helper.name, "Google Chrome")
+        let xpc = ProcessCollector.displayName(
+            path: "/System/Library/Frameworks/Virtualization.framework/X/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine",
+            rawName: "com.apple.Virtualization.Virtua")
+        XCTAssertEqual(xpc.name, "Virtualization.VirtualMachine")
+        XCTAssertNil(xpc.appPath)
+        XCTAssertEqual(ProcessCollector.displayName(path: "/Users/x/.local/share/claude/versions/2.1.325", rawName: "2.1.325").name, "claude")
+        XCTAssertEqual(ProcessCollector.displayName(path: "/usr/local/bin/node", rawName: "node").name, "node")
+    }
+
+    func testProcessCombineAddsHelpers() {
+        let list = [ProcessUsage(pid: 1, name: "Safari", cpuPercent: 5, footprintBytes: 100),
+                    ProcessUsage(pid: 2, name: "Safari", cpuPercent: 3, footprintBytes: 50, appPath: "/Applications/Safari.app"),
+                    ProcessUsage(pid: 3, name: "node", cpuPercent: 1, footprintBytes: 10)]
+        let combined = ProcessCollector.combine(list).sorted { $0.name < $1.name }
+        XCTAssertEqual(combined.count, 2)
+        XCTAssertEqual(combined[0].cpuPercent, 8)
+        XCTAssertEqual(combined[0].footprintBytes, 150)
+        XCTAssertEqual(combined[0].appPath, "/Applications/Safari.app")
+    }
+
+    func testHardwarePortParsing() {
+        let text = """
+        Hardware Port: Ethernet
+        Device: en6
+        Ethernet Address: aa:bb
+
+        Hardware Port: Wi-Fi
+        Device: en0
+        Ethernet Address: cc:dd
+        """
+        let map = NetworkCollector.parseHardwarePorts(text)
+        XCTAssertEqual(map["en0"], "Wi-Fi")
+        XCTAssertEqual(map["en6"], "Ethernet")
+    }
+
+    func testSensorSummary() {
+        let r = [SensorReading(kind: .temperature, name: "Chip die 1", value: 30),
+                 SensorReading(kind: .temperature, name: "Chip 2 die 4", value: 40),
+                 SensorReading(kind: .temperature, name: "SSD (NAND)", value: 35),
+                 SensorReading(kind: .fan, name: "Chip die fan", value: 999)]
+        let s = SensorsCollector.summary(r, kind: .temperature, namePrefix: "die")
+        XCTAssertEqual(s?.count, 2)
+        XCTAssertEqual(s?.average, 35)
+        XCTAssertEqual(s?.maximum, 40)
+        XCTAssertNil(SensorsCollector.summary(r, kind: .power, namePrefix: "die"))
+    }
+
+    func testUnknownPowerKeysAreLabelled() {
+        XCTAssertEqual(SensorsCollector.friendlyName(forKey: "PD0R", kind: .power), "Power PD0R")
+        XCTAssertEqual(SensorsCollector.friendlyName(forKey: "PDTR", kind: .power), "Power adapter in")
+        XCTAssertTrue(SensorsCollector.isKnown("Power adapter in"))
+        XCTAssertFalse(SensorsCollector.isKnown("Power PD0R"))
+    }
 }

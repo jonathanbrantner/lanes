@@ -35,7 +35,8 @@ separate read and write speeds, and stays out of the way.
 - Memory as Activity Monitor counts it (app, wired, compressed), with the menu bar value
   turning amber or red when macOS reports memory pressure. Cached files and swap listed.
 - Optional: internal disk I/O, whole-system power in watts, CPU and GPU usage, and
-  temperatures (CPU, GPU, SSD) in °C or °F, with fan speed on Macs that have a fan.
+  temperatures (CPU, GPU, SSD) in °C or °F, with fan speed on Macs that have a fan. It also shows network speed,
+  drive free space and health, Bluetooth and laptop batteries, the busiest apps, and a page with every sensor the Mac offers.
 - Optional core details: the load of every CPU core with its own graph, grouped as Super,
   Performance and Efficiency cores with one temperature per group, and the GPU's Renderer and
   Tiler load, power, memory and separate temperature sensors. macOS does not report per-core temperatures or per-GPU-core load, so Lanes

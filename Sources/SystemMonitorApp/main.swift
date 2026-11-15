@@ -50,6 +50,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
+
+        // Testing aid: LANES_OPEN=main|cpu|memory opens the panel on that page at launch, so its CPU
+        // cost can be measured without clicking.
+        if let page = ProcessInfo.processInfo.environment["LANES_OPEN"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self else { return }
+                switch page {
+                case "cpu": self.monitor.settings.openDetail = .cpu
+                case "memory": self.monitor.settings.openDetail = .memory
+                case "gpu": self.monitor.settings.openDetail = .gpu
+                default: break
+                }
+                self.togglePopover(nil)
+            }
+        }
     }
 
     private func updateIcon() {
